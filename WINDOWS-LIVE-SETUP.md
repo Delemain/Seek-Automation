@@ -4,23 +4,30 @@ The fully automated application test is not ready yet. These steps let you open 
 
 1. Install **Node.js 24 LTS** from <https://nodejs.org/en/download> if it is not already installed.
 2. Extract the supplied project ZIP into `C:\Maxim`. The project folder should be `C:\Maxim\Seek-Automation`, containing `package.json`. Keep your documents where they are: `C:\Maxim\seek\Resume.docx` and `C:\Maxim\seek\Cover Letter.docx`.
-3. Open **PowerShell** and run:
+3. Open **PowerShell**, close all Chrome windows, and run this command to launch a separate Chrome profile that the helper can reach only from your own PC:
+
+```powershell
+& "$env:ProgramFiles\Google\Chrome\Application\chrome.exe" --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --user-data-dir="$env:LOCALAPPDATA\SEEK-Automation-Chrome"
+```
+
+4. In that Chrome window, sign in to SEEK with Google and open **Quick apply** for the AI Engineer listing. Complete MFA there if requested. Leave that exact Quick apply tab open and do not click final Submit.
+
+5. Open a second PowerShell window in the project folder and run:
 
 ```powershell
 cd C:\Maxim\Seek-Automation
 npm ci
 npx playwright install chromium
-npm run inspect:seek
+npm run inspect:seek -- --connect-cdp http://127.0.0.1:9222
 ```
 
 If PowerShell blocks `npm.ps1`, use `npm.cmd` instead of `npm` and `npx.cmd` instead of `npx` in these commands. No execution-policy change is necessary.
 
-The browser opens the real **AI Engineer — SustainRecruit — Sydney NSW** listing, job `94974243`.
+The helper attaches to the existing Quick apply tab; it does not open another browser or copy login data.
 
-4. Sign in to SEEK in that browser and open **Quick apply**. Complete MFA there if requested. This browser is separate from your everyday Chrome profile.
-5. Once the first application step is visible, switch back to PowerShell and press **Enter**. The helper writes a JSON file under `.inspection\<run-id>\step-01.json` and prints its full path. It does not type answers, upload files, click buttons, save cookies/session state, or submit anything.
-6. If you manually continue to further steps, capture each one in the same way. Manual uploads and navigation may save a SEEK draft. **Stop at the final review; do not click final Submit for this setup capture.** Type `q` in PowerShell when finished.
-7. Review the generated JSON files, then attach them to this chat. They contain field labels/types and visible button captions, not input values or credentials. Account names can appear in labels/captions, so remove those if needed. Do not attach session cookies, passwords, or MFA codes. Capturing even the first application step is useful; you do not need to invent answers to advance further.
+6. Once the first application step is visible, press **Enter** in the second PowerShell window. The helper writes a JSON file under `.inspection\<run-id>\step-01.json` and prints its full path. It does not type answers, upload files, click buttons, save cookies/session state, or submit anything.
+7. If you manually continue to further steps, capture each one in the same way. Manual uploads and navigation may save a SEEK draft. **Stop at the final review; do not click final Submit for this setup capture.** Type `q` in PowerShell when finished.
+8. Review the generated JSON files, then attach them to this chat. They contain field labels/types and visible button captions, not input values or credentials. Account names can appear in labels/captions, so remove those if needed. Do not attach session cookies, passwords, or MFA codes. Capturing even the first application step is useful; you do not need to invent answers to advance further.
 
 If login needs a different provider, the helper reports and blocks the new origin. For an approved login destination, restart with `npm run inspect:seek -- --allow-origin https://EXACT-OBSERVED-LOGIN-HOST`. This is an explicit origin allowance, not a CAPTCHA bypass. Do not add an external employer's application site; employer forms remain outside this runner's scope.
 

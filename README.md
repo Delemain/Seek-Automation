@@ -10,7 +10,7 @@ The requested test job is `94974243`, observed as **AI Engineer at SustainRecrui
 
 `npm run test:live-public -- --headed` opens Chromium and checks the actual job listing without logging in or clicking Apply. It does not validate search, uploads, screening or submission. Public tests are excluded from `npm test` and save their report in `artifacts/public-report/`.
 
-The next step toward the authenticated application test is `npm run inspect:seek` on your Windows PC. It opens an isolated browser without requiring the unfinished adapter. Sign in directly on SEEK, open Quick apply, and capture each application step's field structure as explained in [WINDOWS-LIVE-SETUP.md](WINDOWS-LIVE-SETUP.md). The helper does not read input values, save login state, or perform application actions automatically. Inspection output is ignored by Git; review it before sharing because labels/button captions can include account names. This setup capture is not an automated prepare or submit result.
+The next step toward the authenticated application test is `npm run inspect:seek -- --connect-cdp http://127.0.0.1:9222` on your Windows PC, after manually signing into a separate Chrome profile and opening Quick apply. It attaches to that existing tab without requiring the unfinished adapter. Capture each application step's field structure as explained in [WINDOWS-LIVE-SETUP.md](WINDOWS-LIVE-SETUP.md). The helper does not read input values, save login state, or perform application actions automatically. Inspection output is ignored by Git; review it before sharing because labels/button captions can include account names. This setup capture is not an automated prepare or submit result.
 
 ## Install and run local verification
 
