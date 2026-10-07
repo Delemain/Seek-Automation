@@ -1,4 +1,4 @@
-import { expect as baseExpect, type Page, type Locator, type BrowserContext } from '@playwright/test';
+import { expect as baseExpect, type Page, type Locator, type BrowserContext, type Route } from '@playwright/test';
 import type { Config, Adapter, LocatorSpec } from '../config.js';
 import { WorkflowError } from '../errors.js';
 
@@ -58,8 +58,7 @@ export class NavigationGuard {
   fault?: WorkflowError;
   expired = false;
   constructor(private c: Config, private allowLogin = false) {}
-  async install(context: BrowserContext) {
-    await context.route('**/*', async route => {
+  private async route(route: Route) {
       if (route.request().isNavigationRequest()) {
         const origin = new URL(route.request().url()).origin;
         if (!this.c.allowedOrigins.includes(origin)) {
@@ -73,7 +72,13 @@ export class NavigationGuard {
         }
       }
       await route.continue();
-    });
+  }
+  async install(context: BrowserContext) {
+    await context.route('**/*', route => this.route(route));
+  }
+  /** Limit routing to the runner page when attached to a user-managed browser. */
+  async installPage(page: Page) {
+    await page.route('**/*', route => this.route(route));
   }
   check() {
     if (this.fault) throw this.fault;

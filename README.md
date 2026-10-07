@@ -58,6 +58,25 @@ npm run apply -- --config config/local.json --query "your approved search" --loc
 
 `validate` is offline and opens no browser. `auth` opens an isolated Chromium context, lets you complete login/MFA in the SEEK page, then asks you to press Enter in the terminal. It verifies the exact configured account before privately saving browser storage state. It does not use your ordinary Chrome profile or accept a password in chat. Login requires a graphical, interactive terminal; cloud login needs a supported interactive browser session. Noninteractive authentication fails with exit 3.
 
+### Google sign-in: use a dedicated manual Chrome profile
+
+Google may reject a Playwright-launched browser as unsupported. Do not weaken Google security checks or share cookies. Instead, start a separate Chrome profile yourself, sign in there normally, and let the runner attach **only to that local profile**. This is a local connection, not a browser plugin and not a remote debugging service exposed to the network.
+
+On Windows, close all Chrome windows first, then run this in PowerShell. The profile directory is intentionally separate from your usual browser:
+
+```powershell
+& "$env:ProgramFiles\Google\Chrome\Application\chrome.exe" --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --user-data-dir="$env:LOCALAPPDATA\SEEK-Automation-Chrome"
+```
+
+Sign into SEEK via Google in that Chrome window and leave it open. After the verified production adapter and `config/local.json` exist, run:
+
+```powershell
+npm run auth -- --config config/local.json --connect-cdp http://127.0.0.1:9222
+npm run apply -- --config config/local.json --mode prepare --connect-cdp http://127.0.0.1:9222
+```
+
+The endpoint is restricted to `localhost`/`127.0.0.1`; the runner opens and closes only its own tab. It does not copy, write, or upload the Chrome profile/session state, and it does not close your Chrome window. Close the dedicated Chrome window when you are finished. Chrome’s remote-debugging port grants local programs access to that dedicated profile while it is open, so do not use this mode with your everyday profile or expose port 9222 to another network.
+
 Prepare mode uploads **both new local files**, fills configured fields and answers, checks the final review, retains evidence, and closes the browser without clicking final submit. Uploads and draft saves can still change state on SEEK.
 
 To explicitly enable a single submission:

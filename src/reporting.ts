@@ -8,6 +8,15 @@ import { Ledger, atomicJson, accountReference } from './submission-ledger.js';
 import { configureContext, NavigationGuard, visible } from './pages/ui.js';
 import { applyFlow, reconcileFlow, type Step, type FlowState } from './flows/apply.js';
 
+export type BrowserConnection = { cdpEndpoint?: string };
+export function validateCdpEndpoint(value: string): string {
+  let url: URL;
+  try { url = new URL(value); } catch { throw new WorkflowError('INVALID_CDP_ENDPOINT', 'The CDP endpoint must be an HTTP URL such as http://127.0.0.1:9222.', 2, 'blocked'); }
+  if (!['http:', 'https:'].includes(url.protocol) || !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) || url.username || url.password || url.pathname !== '/' || url.search || url.hash)
+    throw new WorkflowError('INVALID_CDP_ENDPOINT', 'CDP may connect only to a local HTTP endpoint with no path, query or credentials.', 2, 'blocked');
+  return url.href.slice(0, -1);
+}
+
 export type Result = {
   runId: string; startedAt: string; finishedAt: string; operation: 'apply' | 'reconcile';
   mode: string; query: string; location: string; target: Loaded['config']['target']; accountReference: string;
@@ -18,7 +27,7 @@ export type Result = {
 export function launchOptions(headed: boolean) {
   return { headless: !headed, executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH || undefined, timeout: 30000 };
 }
-export async function runWorkflow(loaded: Loaded, operation: 'apply' | 'reconcile' = 'apply', step: Step = async (_name, fn) => fn()): Promise<Result> {
+export async function runWorkflow(loaded: Loaded, operation: 'apply' | 'reconcile' = 'apply', step: Step = async (_name, fn) => fn(), connection: BrowserConnection = {}): Promise<Result> {
   const { config: c, documents: d, adapter: a } = loaded;
   const runId = randomUUID();
   const directory = path.join(c.artifactsDirectory, runId);
@@ -31,31 +40,40 @@ export async function runWorkflow(loaded: Loaded, operation: 'apply' | 'reconcil
     artifacts: { result: path.join(directory, 'result.json') } };
   const ledger = new Ledger(c);
   const guard = new NavigationGuard(c);
+  const cdpEndpoint = connection.cdpEndpoint ? validateCdpEndpoint(connection.cdpEndpoint) : undefined;
   let browser: Browser | undefined, context: BrowserContext | undefined, state: FlowState | undefined, timer: NodeJS.Timeout | undefined;
   let evidenceCapture: Promise<void> | undefined;
   let deadlineCleanup: Promise<void> | undefined;
   const captureEvidence = () => evidenceCapture ??= (async () => {
     const screenshot = path.join(directory, 'evidence.png');
     if (state && !state.page.isClosed()) await state.page.screenshot({ path: screenshot, fullPage: true, timeout: 2000 }).then(async () => { await chmod(screenshot, 0o600); result.artifacts.screenshot = screenshot; }).catch(() => {});
-    const trace = path.join(directory, 'trace.zip');
-    await context?.tracing.stop({ path: trace }).then(async () => { await chmod(trace, 0o600); result.artifacts.trace = trace; }).catch(() => {});
+    if (!cdpEndpoint) {
+      const trace = path.join(directory, 'trace.zip');
+      await context?.tracing.stop({ path: trace }).then(async () => { await chmod(trace, 0o600); result.artifacts.trace = trace; }).catch(() => {});
+    }
   })();
   try {
     await ledger.acquire(runId);
     if (operation === 'apply') await ledger.ensureUnused();
-    try { browser = await chromium.launch(launchOptions(c.headed)); }
-    catch { throw new WorkflowError('BROWSER_LAUNCH_FAILED', 'Chromium could not launch. Install it with npx playwright install chromium; use --headless on machines without a display, or configure PLAYWRIGHT_EXECUTABLE_PATH.'); }
-    try {
-      context = await browser.newContext({ storageState: c.account.storageStatePath, serviceWorkers: 'block', acceptDownloads: false });
-    } catch { throw new WorkflowError('AUTH_STATE_MISSING', 'Cannot load isolated authentication state. Run npm run auth first.', 3, 'blocked'); }
+    if (cdpEndpoint) {
+      try { browser = await chromium.connectOverCDP(cdpEndpoint); }
+      catch { throw new WorkflowError('CDP_CONNECTION_FAILED', 'Cannot connect to the dedicated local Chrome profile. Start Chrome with its remote-debugging port, sign in, then retry.', 3, 'blocked'); }
+      context = browser.contexts()[0];
+      if (!context) throw new WorkflowError('CDP_CONTEXT_MISSING', 'The local Chrome profile has no available browser context. Restart the dedicated Chrome profile and retry.', 3, 'blocked');
+    } else {
+      try { browser = await chromium.launch(launchOptions(c.headed)); }
+      catch { throw new WorkflowError('BROWSER_LAUNCH_FAILED', 'Chromium could not launch. Install it with npx playwright install chromium; use --headless on machines without a display, or configure PLAYWRIGHT_EXECUTABLE_PATH.'); }
+      try { context = await browser.newContext({ storageState: c.account.storageStatePath, serviceWorkers: 'block', acceptDownloads: false }); }
+      catch { throw new WorkflowError('AUTH_STATE_MISSING', 'Cannot load isolated authentication state. Run npm run auth first.', 3, 'blocked'); }
+    }
     configureContext(context, c.stepTimeoutMs);
-    await guard.install(context);
-    await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
     state = { phase: 'preflight', page: await context.newPage(), attempted: false };
+    if (cdpEndpoint) await guard.installPage(state.page);
+    else { await guard.install(context); await context.tracing.start({ screenshots: true, snapshots: true, sources: true }); }
     timer = setTimeout(() => {
       guard.expired = true;
       // Preserve first-failure evidence before closing the context to interrupt pending actions.
-      deadlineCleanup = (async () => { await captureEvidence(); await context?.close().catch(() => {}); })();
+      deadlineCleanup = (async () => { await captureEvidence(); await state?.page.close().catch(() => {}); if (!cdpEndpoint) await context?.close().catch(() => {}); })();
     }, c.runTimeoutMs);
     result.status = operation === 'apply' ? await applyFlow(loaded, state, ledger, runId, guard, step) : await reconcileFlow(loaded, state, ledger, guard, step);
     guard.check();
@@ -79,10 +97,12 @@ export async function runWorkflow(loaded: Loaded, operation: 'apply' | 'reconcil
       const retain = result.exitCode !== 0 || c.retainSuccessEvidence || result.status === 'prepared';
       if (retain) {
         await captureEvidence();
-      } else { await context.tracing.stop().catch(() => {}); }
-      await context.close().catch(() => {});
+      } else if (!cdpEndpoint) { await context.tracing.stop().catch(() => {}); }
+      await state?.page.close().catch(() => {});
+      if (!cdpEndpoint) await context.close().catch(() => {});
     }
-    await browser?.close().catch(() => {});
+    // Closing a browser connected over CDP can close the operator's Chrome profile.
+    if (!cdpEndpoint) await browser?.close().catch(() => {});
     try { await ledger.release(); } catch { result.message += ' Lock cleanup failed; inspect stale-lock instructions.'; }
     result.finishedAt = new Date().toISOString();
     await atomicJson(result.artifacts.result, result);

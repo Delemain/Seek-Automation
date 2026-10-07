@@ -24,6 +24,8 @@ The browser opens the real **AI Engineer — SustainRecruit — Sydney NSW** lis
 
 If login needs a different provider, the helper reports and blocks the new origin. For an approved login destination, restart with `npm run inspect:seek -- --allow-origin https://EXACT-OBSERVED-LOGIN-HOST`. This is an explicit origin allowance, not a CAPTCHA bypass. Do not add an external employer's application site; employer forms remain outside this runner's scope.
 
+Google can reject a Playwright-launched browser, so use your normal Chrome user experience for that sign-in. Once the application adapter is complete, the runner supports attaching to a **separate**, manually signed-in Chrome profile. This is the recommended Google-login path; it is not a browser extension. The exact command and safety notes are in the README section “Google sign-in: use a dedicated manual Chrome profile.”
+
 ## Optional read-only live check
 
 After installation, this command verifies the actual listing without signing in or entering the application:

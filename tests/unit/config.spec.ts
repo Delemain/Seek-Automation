@@ -5,6 +5,7 @@ import os from 'node:os';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
 import { loadConfig, documentInfo } from '../../src/config.js';
+import { validateCdpEndpoint } from '../../src/reporting.js';
 import { fixtureConfig } from '../fixtures/seek-fixture.js';
 
 test('paths are relative to configuration, hashes match content, CLI values override file defaults', async () => {
@@ -61,4 +62,10 @@ test('document preflight rejects directories, empty, oversized, unsupported and 
       await expect(documentInfo(unreadable, limits)).rejects.toMatchObject({ exitCode: 2 }); await chmod(unreadable, 0o600);
     }
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+test('manual browser connection is limited to a local CDP endpoint', () => {
+  expect(validateCdpEndpoint('http://127.0.0.1:9222')).toBe('http://127.0.0.1:9222');
+  expect(validateCdpEndpoint('http://localhost:9222')).toBe('http://localhost:9222');
+  for (const endpoint of ['ws://127.0.0.1:9222', 'https://remote.example', 'http://127.0.0.1:9222/json', 'http://user:secret@127.0.0.1:9222', 'not-a-url'])
+    expect(() => validateCdpEndpoint(endpoint)).toThrow(/CDP/);
 });
