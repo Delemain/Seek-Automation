@@ -1,0 +1,15 @@
+node_modules/
+.auth/
+.inspection/
+private-documents/
+private-state/
+artifacts/
+playwright-report/
+test-results/
+config/local*.json
+config/*.verified.json
+.env
+*.doc
+*.docx
+*.pdf
+*.log

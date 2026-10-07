@@ -1,0 +1,33 @@
+{
+  "name": "seek-production-test-runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0 <25"
+  },
+  "scripts": {
+    "auth": "tsx src/cli.ts auth",
+    "apply": "tsx src/cli.ts apply",
+    "validate": "tsx src/cli.ts validate",
+    "reconcile": "tsx src/cli.ts reconcile",
+    "typecheck": "tsc --noEmit",
+    "test": "playwright test",
+    "test:unit": "playwright test tests/unit",
+    "test:workflow": "playwright test tests/workflow.spec.ts",
+    "test:live": "playwright test --config playwright.live.config.ts",
+    "test:live-public": "playwright test --config playwright.public.config.ts",
+    "inspect:seek": "tsx src/inspect.ts",
+    "report": "playwright show-report"
+  },
+  "dependencies": {
+    "@playwright/test": "1.63.0",
+    "commander": "15.0.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.4",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  }
+}

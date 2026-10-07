@@ -1,0 +1,131 @@
+# SEEK single-job UI test runner
+
+TypeScript and Playwright automation for one explicitly configured SEEK test job per invocation. No LLM, ChatGPT subscription, or AI API is used at runtime.
+
+**Current status:** the runner and local multi-step browser fixture are implemented. The real public job page is accessible and its title, employer, location and Apply link have been inspected. The authenticated production application adapter is **not verified or supplied**: this workspace has no operator login or documents. No production application has been prepared or submitted. See [Windows live setup](WINDOWS-LIVE-SETUP.md), [live adapter setup](docs/ADAPTERS.md), and [validation record](docs/VALIDATION.md).
+
+The requested test job is `94974243`, observed as **AI Engineer at SustainRecruit, Sydney NSW**. The examples now include those details and suggested search keywords; the search results have not yet been verified. The application runner always exercises search and exact-ID selection; it does not silently navigate directly to that application URL. The separate `test:live-public` command is explicitly a direct-navigation, read-only listing check, not the application scenario.
+
+## First live check and operator setup
+
+`npm run test:live-public -- --headed` opens Chromium and checks the actual job listing without logging in or clicking Apply. It does not validate search, uploads, screening or submission. Public tests are excluded from `npm test` and save their report in `artifacts/public-report/`.
+
+The next step toward the authenticated application test is `npm run inspect:seek` on your Windows PC. It opens an isolated browser without requiring the unfinished adapter. Sign in directly on SEEK, open Quick apply, and capture each application step's field structure as explained in [WINDOWS-LIVE-SETUP.md](WINDOWS-LIVE-SETUP.md). The helper does not read input values, save login state, or perform application actions automatically. Inspection output is ignored by Git; review it before sharing because labels/button captions can include account names. This setup capture is not an automated prepare or submit result.
+
+## Install and run local verification
+
+Use Node.js 24 LTS (22.12+ is also accepted), Windows/macOS/Linux, and Chromium:
+
+```sh
+npm ci
+npx playwright install chromium
+npm run typecheck
+npm test
+```
+
+Local tests start their own temporary HTTP servers and browser sessions. They use synthetic documents and never contact SEEK. They cover real browser interactions and upload transport against a fixture, not live SEEK behavior. The Playwright HTML report is written to `playwright-report/`; `npm run report` opens it locally.
+
+In the managed cloud machine, Chromium is already installed. Set `PLAYWRIGHT_EXECUTABLE_PATH=/usr/bin/chromium` to use it and run headlessly. The saved cloud startup instructions include this setting. On a normal PC, leave the variable unset to use Playwright's downloaded browser. Linux systems without browser libraries can use Playwright's documented `install --with-deps chromium` command where system installation is permitted.
+
+## Configure your Windows files
+
+Copy `config/windows.example.json` to `config/local.json`. Its document paths are:
+
+```json
+{
+  "resumePath": "C:\\Maxim\\seek\\Resume.docx",
+  "coverLetterPath": "C:\\Maxim\\seek\\Cover Letter.docx"
+}
+```
+
+Those paths work only when the runner executes on that PC. A cloud session cannot read your C: drive. For cloud/macOS runs, copy `config/example.json` to `config/local.json`, make the documents available privately on that machine, and adjust the paths. Never commit documents or session files.
+
+Complete the exact title/employer, search keywords/location, visible account identifier, applicant details, and screening answers. Verify upload formats and size limits in the actual UI: the example's `.doc`, `.docx`, `.pdf` and 5 MB limit are configurable preflight defaults, not a verified SEEK policy. Local preflight checks regular files, readability, size, extension and SHA-256; it does not certify that a file is a valid Word/PDF document. SEEK's completed-upload state is checked separately.
+
+Create `config/seek.verified.json` from **observed** UI mappings using [ADAPTERS.md](docs/ADAPTERS.md). Production rejects fixture profiles and placeholder config values. No guessed production selectors are included.
+
+All relative paths resolve against the **config file's directory**, including adapter, documents, session, ledger and artifacts. CLI flags override JSON; JSON overrides defaults. The CLI does not auto-load `.env` files. Credentials do not belong in configuration JSON.
+
+## Authenticate, prepare and submit
+
+Once the observed adapter and configuration are complete:
+
+```sh
+npm run validate -- --config config/local.json
+npm run auth -- --config config/local.json
+npm run apply -- --config config/local.json --query "your approved search" --location "Sydney NSW" --mode prepare
+```
+
+`validate` is offline and opens no browser. `auth` opens an isolated Chromium context, lets you complete login/MFA in the SEEK page, then asks you to press Enter in the terminal. It verifies the exact configured account before privately saving browser storage state. It does not use your ordinary Chrome profile or accept a password in chat. Login requires a graphical, interactive terminal; cloud login needs a supported interactive browser session. Noninteractive authentication fails with exit 3.
+
+Prepare mode uploads **both new local files**, fills configured fields and answers, checks the final review, retains evidence, and closes the browser without clicking final submit. Uploads and draft saves can still change state on SEEK.
+
+To explicitly enable a single submission:
+
+```sh
+npm run apply -- --config config/local.json --mode submit
+```
+
+The account, target, filenames and review values are rechecked immediately before submit. An attempted record is persisted before exactly one click. An observed confirmation must include the same job ID and a nonempty application reference. A click or navigation alone does not count. There are no automatic retries or per-run confirmation prompts after submit mode is explicitly configured.
+
+`--headless` overrides the headed default for apply/reconcile. `npm run apply -- --help` describes flags. To generate a Playwright HTML report for an explicitly configured live scenario, set `SEEK_CONFIG` in your shell and run `npm run test:live`. On PowerShell: `$env:SEEK_CONFIG = "config/local.json"`. On macOS/Linux: `SEEK_CONFIG=config/local.json npm run test:live`. That single test respects the JSON mode and uses workers 1, retries 0, and no parallel execution. Plain `npm test` never runs it.
+
+## Questions and adapter limits
+
+An answer has a stable local ID, exact observed locator, type and value:
+
+```json
+{
+  "id": "workEligibility",
+  "locator": { "by": "role", "role": "group", "value": "EXACT OBSERVED QUESTION" },
+  "type": "radio",
+  "value": "EXACT OBSERVED OPTION"
+}
+```
+
+Supported types are `text` (string), `radio` (exact option label within a unique group), `select` (exact option label), `checkbox` (boolean), and `multi-select` (array of option labels on a native multiple select). Custom controls require an explicit adapter extension; the runner never fabricates answers. Each configured answer must be encountered exactly once and have an observed review value. Unknown visible required controls stop the run. The adapter must describe custom required-question containers if the UI does not use native/ARIA required markers.
+
+This MVP supports a fixed, inspected sequence of steps, separate file inputs for résumé/cover letter, and observed completion markers. A custom file-picker-only flow, text-only cover letter, autocomplete requiring option selection, or unimplemented dynamic step must be implemented and fixture-tested after inspection. Do not substitute a stored résumé, extract document text, or guess a selector to make a run pass. Employer-hosted application forms are unsupported. Same-origin popups work; navigation to unapproved origins is blocked. Explicit authentication origins are permitted only during interactive login. CAPTCHA/human verification stops unattended runs.
+
+## Results and exit codes
+
+Every started workflow writes a private `artifacts/<run-id>/result.json` with UTC times, operation/mode, query/location, target, hashed account reference, document filenames/hashes, completed phase, terminal status, diagnostic code, confirmation reference and evidence paths. Configuration failures occur before a run and report a diagnostic/exit code without opening the browser. The console omits credentials, document contents and raw Playwright errors.
+
+| Exit | Meaning |
+| --- | --- |
+| 0 | Prepared or newly submitted with verified confirmation |
+| 2 | Invalid configuration, adapter or documents |
+| 3 | Login, MFA, verification or account mismatch |
+| 4 | Exact target missing, ambiguous or mismatched |
+| 5 | Unsupported navigation/form or unknown required question |
+| 6 | Other workflow failure |
+| 7 | Submission uncertain or reconciliation unresolved |
+| 8 | Lock/duplicate refusal, already applied, or successfully reconciled existing application |
+
+`already_applied` never returns 0, including successful reconciliation; CI must not count it as a new application. The separate diagnostic `RECONCILED` indicates a read-only reconciliation succeeded.
+
+Traces start before navigation. Failures retain available screenshots/traces; prepare always retains review evidence. `retainSuccessEvidence: true` also retains confirmed-success evidence. CLI runs produce JSON/console/evidence; the Playwright Test wrapper additionally produces HTML. Abrupt process death or browser launch failure may prevent screenshot/trace capture; an attempted ledger still blocks another submit.
+
+## Duplicate prevention and recovery
+
+Keep `ledgerPath` stable. It is a directory containing one atomically replaced JSON entry and one exclusive `.lock` file per environment/account/job hash. Changing run ID, keywords, documents or SEEK origin alias does not bypass the key. Attempts, uncertainty and confirmations all block new application runs. The account reference is a hash, not anonymization of low-entropy identifiers.
+
+If confirmation is lost:
+
+```sh
+npm run reconcile -- --config config/local.json
+```
+
+This visits the inspected application-history URL, verifies the account, locates exactly one entry with the exact job ID, and records its observed reference against the **original** run. It never clicks submit. A missing/ambiguous history entry leaves the ledger blocked because absence may be eventual consistency, not proof no application exists.
+
+Stale lock recovery is manual: verify the process and any browser it owns have ended, inspect its PID/run ID and the corresponding JSON, and reconcile the actual account history before removing only that key's stale `.lock`. PID reuse is possible; do not treat age alone as proof a lock is stale. Do not delete a lock held by an active run. There is intentionally no automatic lock expiration.
+
+Reset is separate from running a test: after the approved SEEK operator verifies or performs the agreed cleanup, preserve the ledger entry in a private archive with the evidence and reset reason, then remove only that key's entry and stale lock. Never clear an attempted/uncertain record merely to retry. This runner does not withdraw applications. Separate machines or CI workers require coordinated shared locking and state before concurrent live use; local file locking is not a server-side exactly-once guarantee. Power loss/filesystem failures require manual reconciliation.
+
+## Private data
+
+`.gitignore` excludes standard local configs, verified profiles, documents, auth state, ledger, reports and traces. Keep custom private paths outside tracked directories. New private directories/files use restrictive permissions where supported; on Windows, secure the parent folder with appropriate account ACLs. Storage state contains reusable session credentials. Traces/screenshots/HTML can contain applicant data and authenticated responses, so use approved test data and restrict access. No CI artifact upload is configured. Delete expired artifacts and session files according to your retention policy; preserve the ledger while duplicate prevention is required. Never upload a session file to this chat.
+
+## Defaults
+
+Defaults: production environment, `https://www.seek.com.au`, prepare mode, headed Chromium, 5 search pages, 15-second step timeout, 180-second run deadline, 5,000,000-byte document limit, DOC/DOCX/PDF extensions, no screening answers, no authentication-origin exceptions, and no success evidence retention. Paths default to `../artifacts` and `../private-state/submissions` relative to the config. Required inputs are validated before execution; there is no fallback account, job, answer or live adapter.
