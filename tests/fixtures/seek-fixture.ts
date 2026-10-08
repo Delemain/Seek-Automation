@@ -25,7 +25,7 @@ export const fixtureAdapter: Adapter = {
   confirmation: { ready: id('success'), jobId: id('confirmed-job'), reference: id('reference') },
   history: { url: '/history', ready: id('history'), entry: id('history-entry'), jobIdAttribute: 'data-job-id', reference: id('history-reference') },
 };
-export type Options = { expired?: boolean; unknownQuestion?: boolean; external?: boolean; popup?: boolean; loseConfirmation?: boolean; existingResume?: boolean; unselectedResume?: boolean;
+export type Options = { expired?: boolean; unknownQuestion?: boolean; external?: boolean; popup?: boolean; loseConfirmation?: boolean; existingResume?: boolean; unselectedResume?: boolean; profileOnly?: boolean; radioCoverCompletion?: boolean;
   missing?: boolean; ambiguous?: boolean; mismatch?: boolean; alreadyApplied?: boolean; uploadFailure?: boolean; pagination?: boolean; challenge?: boolean };
 function html(body: string) { return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Local workflow fixture</title></head><body>${body}</body></html>`; }
 const account = '<div data-testid="account">test@example.invalid</div>';
@@ -59,7 +59,7 @@ export async function startFixture(options: Options = {}) {
       const resumeControl = options.existingResume
         ? `<fieldset aria-label="Resumé"><label><input type="radio" name="resume" ${options.unselectedResume ? '' : 'checked'}>Resume.docx</label></fieldset>`
         : '<label>Upload résumé<input type="file" id="resume"></label><div data-testid="resume-name"></div><p hidden data-testid="resume-complete">Uploaded</p>';
-      res.end(html(`${jobIdentity}<section data-testid="uploads"><label>Upload cover letter<input type="file" id="cover"></label><div data-testid="cover-name"></div><p hidden data-testid="cover-complete">Uploaded</p>${resumeControl}<p data-testid="upload-error" hidden>Upload failed</p><button id="continue" disabled>Continue</button></section><script>
+      res.end(html(`${jobIdentity}<section data-testid="uploads"><label>Upload cover letter<input type="file" id="cover"></label><div data-testid="cover-name"></div><div id="cover-choices"></div><p hidden data-testid="cover-complete">Uploaded</p>${resumeControl}<p data-testid="upload-error" hidden>Upload failed</p><button id="continue" disabled>Continue</button></section><script>
         let count = 0;
         ${options.existingResume ? "sessionStorage.setItem('resume','Resume.docx');" : ''}
         for (const id of ${options.existingResume ? "['cover']" : "['cover','resume']"}) document.getElementById(id).onchange = async e => {
@@ -68,6 +68,11 @@ export async function startFixture(options: Options = {}) {
           if (!response.ok) { document.querySelector('[data-testid="upload-error"]').hidden=false; return; }
           sessionStorage.setItem(id,file.name); document.querySelector('[data-testid="'+id+'-name"]').textContent=file.name;
           document.querySelector('[data-testid="'+id+'-complete"]').hidden=false;
+          if (id==='cover' && ${!!options.radioCoverCompletion}) {
+            const label=document.createElement('label'); label.textContent=file.name;
+            const radio=document.createElement('input'); radio.type='radio'; radio.dataset.testid='cover-choice'; radio.checked=true;
+            label.prepend(radio); document.getElementById('cover-choices').append(label);
+          }
           if (++count===${options.existingResume ? 1 : 2}) document.getElementById('continue').disabled=false;
         };
         document.getElementById('continue').onclick=()=>location.href='/questions';
@@ -80,6 +85,9 @@ export async function startFixture(options: Options = {}) {
       setTimeout(() => { res.statusCode = options.uploadFailure ? 400 : 200; res.end('upload processed'); }, 120); return;
     }
     if (url.pathname === '/questions') {
+      if (options.profileOnly) {
+        res.end(html(`${jobIdentity}<section data-testid="profile"><h2>SEEK Profile</h2><button onclick="location.href='/review'">Continue</button></section>`)); return;
+      }
       const fields = [['firstName', 'First name'], ['lastName', 'Last name'], ['email', 'Email'], ['phone', 'Phone']].map(([name, label]) => `<label>${label}<input name="${name}" required></label>`).join('');
       res.end(html(`${jobIdentity}<form data-testid="questions" id="form">${fields}<section data-testid="screening">
         <label>Experience<input name="experience" required></label>

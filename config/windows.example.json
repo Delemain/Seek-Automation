@@ -21,12 +21,6 @@
     "allowedExtensions": [".doc", ".docx", ".pdf"],
     "maxBytes": 5000000
   },
-  "applicant": {
-    "firstName": "REPLACE_WITH_TEST_FIRST_NAME",
-    "lastName": "REPLACE_WITH_TEST_LAST_NAME",
-    "email": "REPLACE_WITH_TEST_EMAIL@example.invalid",
-    "phone": "REPLACE_WITH_TEST_PHONE"
-  },
   "answers": [],
   "mode": "prepare",
   "headed": true,

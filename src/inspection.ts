@@ -14,13 +14,14 @@ export async function captureControls(page: Page) {
   if (await page.locator('input[type="password"]:visible, input[autocomplete="one-time-code"]:visible').count())
     throw new WorkflowError('INSPECTION_LOGIN_PAGE', 'Password and verification pages are not captured. Complete login first.', 3, 'blocked');
   // Keep this callback self-contained: tsx helpers for named local functions do not exist in the page.
-  const controls = await page.locator('input, textarea, select, button, [role="button"], [role="combobox"], [role="radio"], [role="checkbox"], fieldset').evaluateAll(elements => {
+  const controls = await page.locator('input, textarea, select, button, [role="button"], [role="combobox"], [role="radio"], [role="checkbox"], fieldset, a[href*="/job/"], [data-job-id]').evaluateAll(elements => {
     return elements.filter(el => {
       const box = el.getBoundingClientRect();
       const fileInput = el.tagName === 'INPUT' && el.getAttribute('type') === 'file';
       return fileInput || (box.width > 0 && box.height > 0 && getComputedStyle(el).visibility !== 'hidden' && el.getAttribute('type') !== 'password');
     }).map(el => {
       const typed = el as HTMLInputElement;
+      const href = el.tagName === 'A' && el.getAttribute('href') ? new URL(el.getAttribute('href')!, location.href) : undefined;
       const labels = 'labels' in el ? Array.from(typed.labels ?? []).map(label => {
         const copy = label.cloneNode(true) as Element;
         // A wrapping label may contain textareas, options or custom editable values.
@@ -31,6 +32,9 @@ export async function captureControls(page: Page) {
       return {
         tag: el.tagName.toLowerCase(), type: el.getAttribute('type') ?? undefined,
         accept: el.getAttribute('type') === 'file' ? el.getAttribute('accept') ?? undefined : undefined,
+        href: href ? href.origin + href.pathname : undefined,
+        linkText: el.tagName === 'A' ? el.textContent?.replace(/\s+/g, ' ').trim().slice(0,300) || undefined : undefined,
+        jobId: el.getAttribute('data-job-id') ?? undefined,
         id: el.id || undefined, name: el.getAttribute('name') ?? undefined,
         role: el.getAttribute('role') ?? undefined, ariaLabel: el.getAttribute('aria-label')?.replace(/\s+/g, ' ').trim().slice(0,300) || undefined,
         testId: el.getAttribute('data-testid') ?? undefined, automation: el.getAttribute('data-automation') ?? undefined,

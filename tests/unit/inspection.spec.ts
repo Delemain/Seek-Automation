@@ -20,3 +20,10 @@ test('inspection refuses password and MFA pages', async ({ page }) => {
   await page.setContent('<input autocomplete="one-time-code" value="123456">');
   await expect(captureControls(page)).rejects.toMatchObject({ code: 'INSPECTION_LOGIN_PAGE' });
 });
+test('inspection captures job links without tracking parameters', async ({ page }) => {
+  await page.setContent('<article data-job-id="94974243"><a href="https://www.seek.com.au/job/94974243?tracking=PRIVATE_TOKEN#private">AI Engineer</a></article>');
+  const result = await captureControls(page);
+  expect(result.controls.find(c => c.jobId === '94974243')).toBeTruthy();
+  expect(result.controls.find(c => c.tag === 'a')).toMatchObject({ href: 'https://www.seek.com.au/job/94974243', linkText: 'AI Engineer' });
+  expect(JSON.stringify(result)).not.toContain('PRIVATE_TOKEN');
+});

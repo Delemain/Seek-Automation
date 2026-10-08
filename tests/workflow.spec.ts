@@ -35,17 +35,25 @@ test('prepare searches exact ID, uploads both new files despite reversed inputs,
     expect((await readFile(result.artifacts.result, 'utf8'))).not.toContain('test@example.invalid');
   });
 });
-for (const unselectedResume of [false, true]) {
-  test(unselectedResume ? 'stored résumé not selected stops before uploading the cover letter' : 'prepare verifies the preselected SEEK résumé and uploads only the local cover letter', async () => {
-    const server = await startFixture({ existingResume: true, unselectedResume });
+for (const [unselectedResume, mode] of [[false, 'prepare'], [false, 'submit'], [true, 'prepare']] as const) {
+  test(unselectedResume ? 'stored résumé not selected stops before uploading the cover letter' : `${mode} uses the selected SEEK résumé and unchanged profile with a local cover letter`, async () => {
+    const server = await startFixture({ existingResume: true, unselectedResume, profileOnly: true, radioCoverCompletion: true });
     const files = await fixtureConfig(server.origin);
     try {
       const config = JSON.parse(await readFile(files.file, 'utf8'));
       config.documents = { existingResumeFilename: 'Resume.docx', coverLetterPath: './Cover Letter.docx' };
+      config.mode = mode;
+      delete config.applicant;
+      config.answers = [];
       await writeFile(files.file, JSON.stringify(config));
       const adapter = structuredClone(fixtureAdapter);
       adapter.application.steps[0].uploads!.existingResume = { option: { by: 'role', role: 'radio', value: 'Resume.docx' } };
       delete adapter.application.steps[0].uploads!.resume;
+      adapter.application.steps[0].uploads!.coverLetter = { input: { by: 'label', value: 'Upload cover letter' }, selectedRadio: { by: 'testId', value: 'cover-choice' } };
+      adapter.application.steps[1].ready = { by: 'testId', value: 'profile' };
+      adapter.application.steps[1].next = { by: 'role', role: 'button', value: 'Continue' };
+      delete adapter.application.steps[1].fields;
+      delete adapter.application.steps[1].questionRegion;
       await writeFile(path.join(files.dir, 'adapter.json'), JSON.stringify(adapter));
       await rm(path.join(files.dir, 'Resume.docx'));
       const loaded = await loadConfig(files.file);
@@ -55,11 +63,11 @@ for (const unselectedResume of [false, true]) {
         expect(result.code).toBe('STORED_RESUME_MISMATCH');
         expect(server.state.uploads).toHaveLength(0);
       } else {
-        expect(result.status, result.message).toBe('prepared');
+        expect(result.status, result.message).toBe(mode === 'submit' ? 'submitted' : 'prepared');
         expect(server.state.uploads.map(f => f.filename)).toEqual(['Cover Letter.docx']);
         expect(result.documents.resume).toEqual({ source: 'seek', filename: 'Resume.docx' });
       }
-      expect(server.state.submissions).toBe(0);
+      expect(server.state.submissions).toBe(mode === 'submit' && !unselectedResume ? 1 : 0);
     } finally { await server.close(); await rm(files.dir, { recursive: true, force: true }); }
   });
 }

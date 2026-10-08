@@ -10,7 +10,8 @@ export const locatorSchema = z.object({
   role: z.string().optional(),
 }).strict().refine(x => x.by !== 'role' || !!x.role, 'Role locators need a role');
 const identitySchema = z.object({ account: locatorSchema, jobId: locatorSchema, title: locatorSchema, employer: locatorSchema }).strict();
-const uploadSchema = z.object({ input: locatorSchema, completed: locatorSchema, filename: locatorSchema, error: locatorSchema.optional() }).strict();
+const uploadSchema = z.object({ input: locatorSchema, completed: locatorSchema.optional(), filename: locatorSchema.optional(), selectedRadio: locatorSchema.optional(), error: locatorSchema.optional() }).strict()
+  .refine(x => x.selectedRadio ? !x.completed && !x.filename : !!x.completed && !!x.filename, 'Use either a selected filename radio or both completion and filename markers.');
 const existingResumeSchema = z.object({ option: locatorSchema }).strict();
 export const adapterSchema = z.object({
   kind: z.enum(['fixture', 'observed']),
@@ -46,7 +47,7 @@ const configSchema = z.object({
     allowedExtensions: z.array(z.enum(['.doc', '.docx', '.pdf'])).min(1).default(['.doc', '.docx', '.pdf']),
     maxBytes: z.number().int().positive().max(100_000_000).default(5_000_000),
   }).strict().refine(d => !!d.resumePath !== !!d.existingResumeFilename, 'Configure exactly one of resumePath or existingResumeFilename.'),
-  applicant: z.object({ firstName: z.string().min(1), lastName: z.string().min(1), email: z.string().email(), phone: z.string().min(1) }).strict(),
+  applicant: z.object({ firstName: z.string().min(1), lastName: z.string().min(1), email: z.string().email(), phone: z.string().min(1) }).strict().optional(),
   answers: z.array(z.object({ id: z.string().min(1), locator: locatorSchema,
     type: z.enum(['text', 'radio', 'select', 'checkbox', 'multi-select']),
     value: z.union([z.string(), z.boolean(), z.array(z.string())]),
@@ -126,7 +127,9 @@ export async function loadConfig(file: string, overrides: Overrides = {}): Promi
   if (!!uploads?.resume === !!uploads?.existingResume || !!uploads?.existingResume !== !!c.documents.existingResumeFilename)
     invalid('Adapter résumé source must match the configured local file or existing SEEK résumé.');
   for (const answer of c.answers) if (!a.review.answers[answer.id]) invalid(`Missing review evidence for answer ${answer.id}.`);
-  for (const key of Object.keys(c.applicant)) if (!a.review.applicant[key]) invalid(`Missing review evidence for applicant field ${key}.`);
+  for (const step of a.application.steps) for (const key of Object.keys(step.fields ?? {}))
+    if (!c.applicant || !(key in c.applicant)) invalid(`Adapter requested an unconfigured applicant field: ${key}.`);
+  for (const key of Object.keys(c.applicant ?? {})) if (!a.review.applicant[key]) invalid(`Missing review evidence for applicant field ${key}.`);
   const [resume, coverLetter] = await Promise.all([
     c.documents.resumePath ? documentInfo(c.documents.resumePath, c.documents) : Promise.resolve({ source: 'seek' as const, filename: c.documents.existingResumeFilename! }),
     documentInfo(c.documents.coverLetterPath, c.documents),
