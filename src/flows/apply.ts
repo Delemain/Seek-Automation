@@ -41,10 +41,10 @@ export async function applyFlow(loaded: Loaded, state: FlowState, ledger: Ledger
     try {
       guard.check();
       await (await unique(state.page, a.review.submit)).click(); // Exactly one call. Never retried.
-      await expect(locate(state.page, a.confirmation.ready)).toBeVisible();
+      await expect(locate(state.page, a.confirmation!.ready)).toBeVisible();
       guard.checkPage(state.page);
-      await exact(state.page, a.confirmation.jobId, c.target.jobId);
-      const confirmation = (await (await unique(state.page, a.confirmation.reference)).innerText()).trim();
+      await exact(state.page, a.confirmation!.jobId, c.target.jobId);
+      const confirmation = (await (await unique(state.page, a.confirmation!.reference)).innerText()).trim();
       if (!confirmation) throw Error('No confirmation reference');
       await ledger.write({ ...entry, state: 'confirmed', confirmation, updatedAt: new Date().toISOString() });
       state.confirmation = confirmation; state.phase = 'confirmation';
@@ -59,19 +59,21 @@ export async function applyFlow(loaded: Loaded, state: FlowState, ledger: Ledger
 export async function reconcileFlow(loaded: Loaded, state: FlowState, ledger: Ledger, guard: NavigationGuard, step: Step): Promise<TerminalStatus> {
   const expect = assertions(state.page);
   const { config: c, adapter: a } = loaded;
+  if (!a.history) throw new WorkflowError('HISTORY_UNAVAILABLE', 'This prepare-only adapter has no verified application-history mapping.', 5, 'blocked');
+  const history = a.history;
   const existing = await ledger.read();
   if (!existing) throw new WorkflowError('NO_ATTEMPT', 'There is no local submission attempt to reconcile.', 8, 'blocked');
   return step<TerminalStatus>('Read application history without submitting', async () => {
     state.phase = 'reconciliation';
-    await state.page.goto(new URL(a.history.url, c.baseUrl).href, { waitUntil: 'domcontentloaded' });
+    await state.page.goto(new URL(history.url, c.baseUrl).href, { waitUntil: 'domcontentloaded' });
     guard.checkPage(state.page);
     await checkAuthentication(state.page, c, a);
-    await expect(locate(state.page, a.history.ready)).toBeVisible();
+    await expect(locate(state.page, history.ready)).toBeVisible();
     const matches = [];
-    for (const entry of await locate(state.page, a.history.entry).all())
-      if (await entry.getAttribute(a.history.jobIdAttribute) === c.target.jobId) matches.push(entry);
+    for (const entry of await locate(state.page, history.entry).all())
+      if (await entry.getAttribute(history.jobIdAttribute) === c.target.jobId) matches.push(entry);
     if (matches.length !== 1) throw new WorkflowError('RECONCILIATION_UNRESOLVED', 'History did not show exactly one application for the approved job. Ledger remains blocked.', 7, 'submission_uncertain');
-    const confirmation = (await (await unique(matches[0], a.history.reference)).innerText()).trim();
+    const confirmation = (await (await unique(matches[0], history.reference)).innerText()).trim();
     if (!confirmation) throw new WorkflowError('RECONCILIATION_UNRESOLVED', 'History reference is missing. Ledger remains blocked.', 7, 'submission_uncertain');
     const now = new Date().toISOString();
     await ledger.write({ ...existing, state: 'confirmed', confirmation, updatedAt: now, reconciledAt: now });

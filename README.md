@@ -2,7 +2,7 @@
 
 TypeScript and Playwright automation for one explicitly configured SEEK test job per invocation. No LLM, ChatGPT subscription, or AI API is used at runtime.
 
-**Current status:** the runner and local multi-step browser fixture are implemented. The real public job page and authenticated search/document/profile/review controls have been inspected. A non-runnable observed adapter draft is in `config/seek.observed.draft.json`; the production application adapter is **not yet verified or complete**. This workspace has no operator login or documents. No production application has been prepared or submitted. See [Windows live setup](WINDOWS-LIVE-SETUP.md), [live adapter setup](docs/ADAPTERS.md), and [validation record](docs/VALIDATION.md).
+**Current status:** the runner and local multi-step browser fixture are implemented. The real public job page and authenticated search/document/profile/review controls have been inspected. `config/seek.prepare.candidate.json` is a **prepare-only, unverified** adapter assembled from those captures; `config/seek.observed.draft.json` remains the non-runnable structural record. No live automated prepare or submit has been run. Submit mode is blocked for the candidate because confirmation and history evidence are missing. See [Windows live setup](WINDOWS-LIVE-SETUP.md), [live adapter setup](docs/ADAPTERS.md), and [validation record](docs/VALIDATION.md).
 
 The requested test job is `94974243`, observed as **AI Engineer at SustainRecruit, Sydney NSW**. Operator captures show it in results for a name-only `AI Engineer` search, with no location entered. The application runner always exercises search and exact-ID selection; it does not silently navigate directly to that application URL. The separate `test:live-public` command is explicitly a direct-navigation, read-only listing check, not the application scenario.
 
@@ -42,13 +42,13 @@ The Windows example verifies that the exact `Resume.docx` radio is already selec
 
 Complete the visible account identifier and any required screening answers. The examples set `"query": "AI Engineer"` and `"location": ""` to match the operator's name-only search; an empty location clears a prefilled location field. The Windows example leaves the existing SEEK Profile unchanged and omits `applicant`; configure applicant fields only when the observed form requires editing them. Verify upload formats and size limits in the actual UI: the example's `.doc`, `.docx`, `.pdf` and 5 MB limit are configurable preflight defaults, not a verified SEEK policy. Local preflight checks regular files, readability, size, extension and SHA-256; it does not certify that a file is a valid Word/PDF document. SEEK's completed-upload state is checked separately.
 
-Create `config/seek.verified.json` from **observed** UI mappings using [ADAPTERS.md](docs/ADAPTERS.md). Production rejects fixture profiles and placeholder config values. No guessed production selectors are included.
+The Windows example now points to the prepare-only candidate. Its exact account check uses the configured email visible on Quick Apply before uploading, and rechecks it on review. If the text is missing or appears more than once, it stops. Complete live prepare is still unverified; offline validation is not proof the UI will work. Production rejects fixture profiles and placeholder config values.
 
 All relative paths resolve against the **config file's directory**, including adapter, documents, session, ledger and artifacts. CLI flags override JSON; JSON overrides defaults. The CLI does not auto-load `.env` files. Credentials do not belong in configuration JSON.
 
 ## Authenticate, prepare and submit
 
-Once the observed adapter and configuration are complete:
+For a fully observed adapter with an account locator on the login page, the isolated-browser path is:
 
 ```sh
 npm run validate -- --config config/local.json
@@ -68,18 +68,18 @@ On Windows, close all Chrome windows first, then run this in PowerShell. The pro
 & "$env:ProgramFiles\Google\Chrome\Application\chrome.exe" --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --user-data-dir="$env:LOCALAPPDATA\SEEK-Automation-Chrome"
 ```
 
-Sign into SEEK via Google in that Chrome window and leave it open. After the verified production adapter and `config/local.json` exist, run:
+Sign into SEEK via Google in that Chrome window and leave it open. With the prepare-only candidate and a privately completed `config/local.json`, skip `auth`: the homepage does not expose a reliable account identifier. Run:
 
 ```powershell
-npm run auth -- --config config/local.json --connect-cdp http://127.0.0.1:9222
+npm run validate -- --config config/local.json
 npm run apply -- --config config/local.json --mode prepare --connect-cdp http://127.0.0.1:9222
 ```
 
 The endpoint is restricted to `localhost`/`127.0.0.1`; the runner opens and closes only its own tab. It does not copy, write, or upload the Chrome profile/session state, and it does not close your Chrome window. Close the dedicated Chrome window when you are finished. Chrome’s remote-debugging port grants local programs access to that dedicated profile while it is open, so do not use this mode with your everyday profile or expose port 9222 to another network.
 
-Prepare mode verifies the selected stored résumé and uploads the local cover letter when configured that way. The local-résumé variant uploads both files. It then fills configured fields and answers, checks the final review, retains evidence, and closes the browser without clicking final submit. Uploads and draft saves can still change state on SEEK.
+This is the first live automated check, not a verified path yet. It checks the configured account on Quick Apply before any upload, verifies the selected stored résumé, uploads the local cover letter, leaves SEEK Profile unchanged, checks review, and closes its tab without clicking Submit. If a selector has changed or is ambiguous, it stops. Uploads and draft saves can still change state on SEEK. The isolated `auth` command deliberately refuses this deferred-account adapter; it cannot save an account-verified session from the homepage.
 
-To explicitly enable a single submission:
+Only after observed confirmation and history mappings are implemented and tested can a separate verified adapter explicitly enable a single submission. The supplied candidate refuses this command at preflight:
 
 ```sh
 npm run apply -- --config config/local.json --mode submit

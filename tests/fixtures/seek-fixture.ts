@@ -26,7 +26,7 @@ export const fixtureAdapter: Adapter = {
   history: { url: '/history', ready: id('history'), entry: id('history-entry'), jobIdAttribute: 'data-job-id', reference: id('history-reference') },
 };
 export type Options = { expired?: boolean; unknownQuestion?: boolean; external?: boolean; popup?: boolean; loseConfirmation?: boolean; existingResume?: boolean; unselectedResume?: boolean; profileOnly?: boolean; radioCoverCompletion?: boolean; prefilledSearchLocation?: boolean;
-  missing?: boolean; ambiguous?: boolean; mismatch?: boolean; alreadyApplied?: boolean; uploadFailure?: boolean; pagination?: boolean; challenge?: boolean; inlineDetail?: boolean; wrongApplyHref?: boolean };
+  missing?: boolean; ambiguous?: boolean; mismatch?: boolean; alreadyApplied?: boolean; uploadFailure?: boolean; pagination?: boolean; challenge?: boolean; inlineDetail?: boolean; wrongApplyHref?: boolean; wrongAccountOnApplication?: boolean; wrongAccountOnReview?: boolean };
 function html(body: string) { return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Local workflow fixture</title></head><body>${body}</body></html>`; }
 const account = '<div data-testid="account">test@example.invalid</div>';
 const jobIdentity = `${account}<span data-testid="job-id">94974243</span><h1 data-testid="title">QA Test Engineer</h1><div data-testid="employer">Fixture Employer</div>`;
@@ -60,7 +60,7 @@ export async function startFixture(options: Options = {}) {
       const resumeControl = options.existingResume
         ? `<fieldset aria-label="Resumé"><label><input type="radio" name="resume" ${options.unselectedResume ? '' : 'checked'}>Resume.docx</label></fieldset>`
         : '<label>Upload résumé<input type="file" id="resume"></label><div data-testid="resume-name"></div><p hidden data-testid="resume-complete">Uploaded</p>';
-      res.end(html(`${jobIdentity}<section data-testid="uploads"><label>Upload cover letter<input type="file" id="cover"></label><div data-testid="cover-name"></div><div id="cover-choices"></div><p hidden data-testid="cover-complete">Uploaded</p>${resumeControl}<p data-testid="upload-error" hidden>Upload failed</p><button id="continue" disabled>Continue</button></section><script>
+      res.end(html(`${options.wrongAccountOnApplication ? jobIdentity.replace('test@example.invalid', 'other@example.invalid') : jobIdentity}<section data-testid="uploads"><label>Upload cover letter<input type="file" id="cover"></label><div data-testid="cover-name"></div><div id="cover-choices"></div><p hidden data-testid="cover-complete">Uploaded</p>${resumeControl}<p data-testid="upload-error" hidden>Upload failed</p><button id="continue" disabled>Continue</button></section><script>
         let count = 0;
         ${options.existingResume ? "sessionStorage.setItem('resume','Resume.docx');" : ''}
         for (const id of ${options.existingResume ? "['cover']" : "['cover','resume']"}) document.getElementById(id).onchange = async e => {
@@ -107,7 +107,7 @@ export async function startFixture(options: Options = {}) {
       const items = ['resume', 'cover'].map(k => `<div data-testid="review-${k}" data-value="${k}"></div>`).join('') +
         ['experience', 'eligible', 'notice', 'consent', 'skills'].map(k => `<div data-testid="answer-${k}" data-value="${k}"></div>`).join('') +
         ['firstName', 'lastName', 'email', 'phone'].map(k => `<div data-testid="applicant-${k}" data-value="${k}"></div>`).join('');
-      res.end(html(`${jobIdentity}<section data-testid="review">${items}<button id="submit">Submit application</button></section><script>
+      res.end(html(`${options.wrongAccountOnReview ? jobIdentity.replace('test@example.invalid', 'other@example.invalid') : jobIdentity}<section data-testid="review">${items}<button id="submit">Submit application</button></section><script>
         for(const el of document.querySelectorAll('[data-value]')) el.textContent=sessionStorage.getItem(el.dataset.value);
         document.getElementById('submit').onclick=async()=>{const r=await fetch('/submit',{method:'POST'});const d=await r.json();
           ${options.loseConfirmation ? 'document.body.textContent="Waiting for confirmation";' : 'const panel=document.createElement("section");panel.dataset.testid="success";panel.innerHTML=\'<span data-testid="confirmed-job">94974243</span><span data-testid="reference"></span>\';panel.querySelector(\'[data-testid="reference"]\').textContent=d.reference;document.body.append(panel);'}

@@ -35,6 +35,23 @@ test('observed adapter draft is deliberately not runnable in production', async 
   expect(draft.missingBeforeSubmit.length).toBeGreaterThan(0);
   expect(adapterSchema.safeParse(draft).success).toBe(false);
 });
+test('observed prepare candidate parses but refuses submit without success and history evidence', async () => {
+  const candidate = adapterSchema.parse(JSON.parse(await readFile('config/seek.prepare.candidate.json', 'utf8')));
+  expect(candidate.kind).toBe('observed');
+  expect(candidate.auth.deferAccountUntilApplication).toBe(true);
+  expect(candidate.confirmation).toBeUndefined();
+  expect(candidate.history).toBeUndefined();
+  const f = await fixtureConfig('http://127.0.0.1:12345');
+  try {
+    f.raw.documents = { existingResumeFilename: 'Resume.docx', coverLetterPath: './Cover Letter.docx' } as typeof f.raw.documents;
+    f.raw.answers = [];
+    delete (f.raw as Partial<typeof f.raw>).applicant;
+    await writeFile(f.file, JSON.stringify(f.raw));
+    await writeFile(path.join(f.dir, 'adapter.json'), JSON.stringify(candidate));
+    expect((await loadConfig(f.file)).config.mode).toBe('prepare');
+    await expect(loadConfig(f.file, { mode: 'submit' })).rejects.toMatchObject({ exitCode: 2 });
+  } finally { await rm(f.dir, { recursive: true, force: true }); }
+});
 test('job ID URL verification uses a whole path segment', () => {
   const page = (url: string) => ({ url: () => url }) as Page;
   expect(() => jobIdFromSeekPath(page('https://au.seek.com/job/94974243/apply/review'), '94974243')).not.toThrow();

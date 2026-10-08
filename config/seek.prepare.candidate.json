@@ -1,0 +1,69 @@
+{
+  "kind": "observed",
+  "observedAt": "2026-10-08",
+  "evidence": "Operator structural captures of signed-in SEEK search, Quick Apply documents/profile, and review for job 94974243. This is a prepare-only candidate, not a live automated pass.",
+  "auth": {
+    "url": "/",
+    "ready": { "by": "css", "value": "button[data-automation='account name']" },
+    "deferAccountUntilApplication": true
+  },
+  "search": {
+    "ready": { "by": "css", "value": "#keywords-input" },
+    "query": { "by": "css", "value": "#keywords-input" },
+    "location": { "by": "css", "value": "#SearchBar__Where" },
+    "submit": { "by": "role", "role": "button", "value": "Submit search" },
+    "results": { "by": "testId", "value": "job-card" },
+    "card": { "by": "testId", "value": "job-card" },
+    "cardJobIdAttribute": "data-job-id",
+    "cardLink": { "by": "testId", "value": "job-card-title" }
+  },
+  "job": {
+    "ready": { "by": "role", "role": "link", "value": "Apply for AI Engineer at SustainRecruit" },
+    "identity": {
+      "jobIdFromApplyHref": { "by": "role", "role": "link", "value": "Apply for AI Engineer at SustainRecruit" },
+      "titleEmployerFromApplyName": { "by": "role", "role": "link", "value": "Apply for AI Engineer at SustainRecruit" }
+    },
+    "apply": { "by": "role", "role": "link", "value": "Apply for AI Engineer at SustainRecruit" }
+  },
+  "application": {
+    "ready": { "by": "testId", "value": "continue-button" },
+    "jobIdFromUrl": true,
+    "accountFromConfigText": true,
+    "steps": [
+      {
+        "name": "Choose documents",
+        "ready": { "by": "testId", "value": "continue-button" },
+        "uploads": {
+          "existingResume": { "option": { "by": "role", "role": "radio", "value": "Resume.docx" } },
+          "coverLetter": {
+            "input": { "by": "css", "value": "#coverLetter-fileFile" },
+            "selectedRadio": { "by": "css", "value": "input[type='radio'][data-testid='coverLetter-method-upload']" }
+          }
+        },
+        "next": { "by": "testId", "value": "continue-button" }
+      },
+      {
+        "name": "Keep SEEK Profile unchanged",
+        "ready": { "by": "testId", "value": "add-skills" },
+        "next": { "by": "testId", "value": "continue-button" }
+      }
+    ]
+  },
+  "review": {
+    "ready": { "by": "testId", "value": "review-submit-application" },
+    "identity": {
+      "accountFromConfigText": true,
+      "jobIdFromUrl": true,
+      "title": { "by": "css", "value": "h1" },
+      "employer": { "by": "text", "value": "SustainRecruit" }
+    },
+    "resume": { "by": "testId", "value": "resume-upload" },
+    "coverLetter": { "by": "testId", "value": "cover-letter-upload" },
+    "answers": {},
+    "applicant": {},
+    "submit": { "by": "testId", "value": "review-submit-application" },
+    "mustBeChecked": [
+      { "by": "testId", "value": "profile-visibility-field2-radio-group-standard" }
+    ]
+  }
+}

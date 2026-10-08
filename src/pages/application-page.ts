@@ -105,6 +105,8 @@ export async function assertReview(page: Page, { config: c, adapter: a, document
   await identity(page, c, a.review.identity);
   await exact(page, a.review.resume, d.resume.filename);
   await exact(page, a.review.coverLetter, d.coverLetter.filename);
+  for (const spec of a.review.mustBeChecked ?? []) await expect(await unique(page, spec)).toBeChecked();
+  for (const spec of a.review.mustBeUnchecked ?? []) await expect(await unique(page, spec)).not.toBeChecked();
   for (const answer of c.answers) await exact(page, a.review.answers[answer.id], answerText(answer.value));
   for (const [key, value] of Object.entries(c.applicant ?? {})) await exact(page, a.review.applicant[key], value);
 }

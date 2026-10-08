@@ -61,6 +61,37 @@ for (const wrongApplyHref of [false, true]) test(`in-place SEEK job panel ${wron
     expect(server.state.submissions).toBe(0);
   } finally { await server.close(); await rm(files.dir, { recursive: true, force: true }); }
 });
+for (const [wrongAccountOnApplication, wrongAccountOnReview, label] of [
+  [false, false, 'allows prepare after exact Quick Apply and review matches'],
+  [true, false, 'blocks before uploading on Quick Apply mismatch'],
+  [false, true, 'blocks prepared result on review account mismatch'],
+] as const) test(`deferred account check ${label}`, async () => {
+  const server = await startFixture({ wrongAccountOnApplication, wrongAccountOnReview, profileOnly: true });
+  const files = await fixtureConfig(server.origin);
+  try {
+    const config = JSON.parse(await readFile(files.file, 'utf8'));
+    delete config.applicant;
+    config.answers = [];
+    await writeFile(files.file, JSON.stringify(config));
+    const adapter = structuredClone(fixtureAdapter);
+    delete adapter.auth.account;
+    adapter.auth.deferAccountUntilApplication = true;
+    adapter.application.accountFromConfigText = true;
+    delete adapter.review.identity.account;
+    adapter.review.identity.accountFromConfigText = true;
+    delete adapter.confirmation;
+    delete adapter.history;
+    adapter.application.steps[1].ready = { by: 'testId', value: 'profile' };
+    adapter.application.steps[1].next = { by: 'role', role: 'button', value: 'Continue' };
+    delete adapter.application.steps[1].fields;
+    delete adapter.application.steps[1].questionRegion;
+    await writeFile(path.join(files.dir, 'adapter.json'), JSON.stringify(adapter));
+    const result = await run(await loadConfig(files.file));
+    expect(result.code, result.message).toBe(wrongAccountOnApplication || wrongAccountOnReview ? 'ACCOUNT_MISMATCH' : 'PREPARED');
+    expect(server.state.uploads).toHaveLength(wrongAccountOnApplication ? 0 : 2);
+    expect(server.state.submissions).toBe(0);
+  } finally { await server.close(); await rm(files.dir, { recursive: true, force: true }); }
+});
 for (const [unselectedResume, mode] of [[false, 'prepare'], [false, 'submit'], [true, 'prepare']] as const) {
   test(unselectedResume ? 'stored résumé not selected stops before uploading the cover letter' : `${mode} uses the selected SEEK résumé and unchanged profile with a local cover letter`, async () => {
     const server = await startFixture({ existingResume: true, unselectedResume, profileOnly: true, radioCoverCompletion: true });

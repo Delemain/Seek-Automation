@@ -1,6 +1,6 @@
 # Start the live SEEK setup on your PC
 
-The fully automated application test is not ready yet. These steps let you open the real SEEK job, log in privately, and capture the authenticated form structure needed to finish it. No password or session file needs to be sent to the developer.
+A prepare-only adapter candidate is ready for a first live check, but has not yet passed against SEEK. These steps use your private Windows browser session. No password or session file needs to be sent to the developer, and the candidate cannot submit an application.
 
 1. Install **Node.js 24 LTS** from <https://nodejs.org/en/download> if it is not already installed.
 2. Use your existing project folder `C:\Maxim\seek\Seek-Automation`, containing `package.json`. The runner uses the `Resume.docx` already selected in SEEK and reads your cover letter from `C:\Maxim\seek\Cover Letter.docx`.
@@ -47,8 +47,17 @@ npm run test:live-public -- --headed
 
 It checks the job title, employer, location, job ID in the URL, and exact application link. It is **not** a test of search, document upload or application submission. The browser closes when the check finishes. To inspect its report, run `npx playwright show-report artifacts/public-report` on your PC.
 
-## After authenticated mappings are implemented
+## First automated prepare check
 
-The structural mappings are recorded in `config/seek.observed.draft.json`, which is deliberately not a runnable adapter. The final setup still needs a privately configured account identifier, exact review value selectors, a live prepare pass, and reliable submission/history evidence. The Windows example uses the preselected `Resume.docx` in SEEK, leaves the SEEK Profile unchanged, and uploads the local cover letter at `C:\Maxim\seek\Cover Letter.docx`. Do not expect that example alone to make `npm run auth` or `npm run apply` succeed today: a verified application adapter and completed private configuration are required.
+Pull the latest `main`, then copy `config/windows.example.json` to the ignored `config/local.json`. Set `account.expectedIdentifier` to your exact SEEK account email **in that local file only**; do not send it or your session files here. Confirm the stored résumé is still `Resume.docx` and the cover letter exists at `C:\Maxim\seek\Cover Letter.docx`. Leave the dedicated, signed-in Chrome window open. From PowerShell in the project folder:
 
-The first automated application run will then use `--mode prepare`, verifying the final review without final submission. Reliable observed submission/history evidence must be added before enabling submit mode. This capture tool does not save an authenticated session; the verified `auth` command will do so during that later setup.
+```powershell
+Copy-Item config\windows.example.json config\local.json
+notepad config\local.json
+npm run validate -- --config config/local.json
+npm run apply -- --config config/local.json --mode prepare --connect-cdp http://127.0.0.1:9222
+```
+
+Skip `Copy-Item` if you already have a customized `config/local.json`; do not overwrite it. The run searches for `AI Engineer` with no location, verifies the exact job, checks your account email on Quick Apply **before** uploading, verifies the preselected résumé, uploads the local cover letter, leaves your SEEK Profile and skills untouched, then checks review. It does not click Submit application. Uploading may save a draft. If it stops, share only the diagnostic code and phase from `result.json` after reviewing for personal data; do not share the full trace or session files.
+
+This candidate deliberately blocks `--mode submit` until the confirmation screen and application-history check are observed and tested. The standalone `auth` command also blocks this candidate because the homepage account email could not be verified; use the dedicated Chrome CDP path above. This is not yet a live-tested automation path.

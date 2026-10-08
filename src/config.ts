@@ -9,7 +9,8 @@ export const locatorSchema = z.object({
   by: z.enum(['role', 'label', 'testId', 'text', 'css']), value: z.string().min(1),
   role: z.string().optional(),
 }).strict().refine(x => x.by !== 'role' || !!x.role, 'Role locators need a role');
-const identitySchema = z.object({ account: locatorSchema.optional(), jobId: locatorSchema.optional(), jobIdFromUrl: z.literal(true).optional(), jobIdFromApplyHref: locatorSchema.optional(), title: locatorSchema.optional(), employer: locatorSchema.optional(), titleEmployerFromApplyName: locatorSchema.optional() }).strict()
+const identitySchema = z.object({ account: locatorSchema.optional(), accountFromConfigText: z.literal(true).optional(), jobId: locatorSchema.optional(), jobIdFromUrl: z.literal(true).optional(), jobIdFromApplyHref: locatorSchema.optional(), title: locatorSchema.optional(), employer: locatorSchema.optional(), titleEmployerFromApplyName: locatorSchema.optional() }).strict()
+  .refine(x => !x.account || !x.accountFromConfigText, 'Use one account identity source.')
   .refine(x => [x.jobId, x.jobIdFromUrl, x.jobIdFromApplyHref].filter(Boolean).length === 1, 'Choose exactly one job ID source: a locator, page URL, or Apply link.')
   .refine(x => x.titleEmployerFromApplyName ? !x.title && !x.employer : !!x.title && !!x.employer, 'Choose either separate title/employer locators or one observed Apply accessible name.');
 const uploadSchema = z.object({ input: locatorSchema, completed: locatorSchema.optional(), filename: locatorSchema.optional(), selectedRadio: locatorSchema.optional(), error: locatorSchema.optional() }).strict()
@@ -18,12 +19,13 @@ const existingResumeSchema = z.object({ option: locatorSchema }).strict();
 export const adapterSchema = z.object({
   kind: z.enum(['fixture', 'observed']),
   observedAt: z.string().min(1), evidence: z.string().min(1),
-  auth: z.object({ url: z.string(), ready: locatorSchema, account: locatorSchema, loginRequired: locatorSchema, challenge: locatorSchema.optional() }).strict(),
+  auth: z.object({ url: z.string(), ready: locatorSchema, account: locatorSchema.optional(), deferAccountUntilApplication: z.literal(true).optional(), loginRequired: locatorSchema.optional(), challenge: locatorSchema.optional() }).strict()
+    .refine(x => !!x.account !== !!x.deferAccountUntilApplication, 'Choose an exact account locator or defer the exact check until Quick Apply.'),
   cookieAccept: locatorSchema.optional(),
   search: z.object({ ready: locatorSchema, query: locatorSchema, location: locatorSchema, submit: locatorSchema, results: locatorSchema,
     card: locatorSchema, cardJobIdAttribute: z.string().min(1), cardLink: locatorSchema, next: locatorSchema.optional() }).strict(),
   job: z.object({ ready: locatorSchema, identity: identitySchema, apply: locatorSchema, alreadyApplied: locatorSchema.optional() }).strict(),
-  application: z.object({ ready: locatorSchema, jobId: locatorSchema.optional(), jobIdFromUrl: z.literal(true).optional(), alreadyApplied: locatorSchema.optional(),
+  application: z.object({ ready: locatorSchema, jobId: locatorSchema.optional(), jobIdFromUrl: z.literal(true).optional(), accountFromConfigText: z.literal(true).optional(), alreadyApplied: locatorSchema.optional(),
     steps: z.array(z.object({ name: z.string().min(1), ready: locatorSchema,
       uploads: z.object({ resume: uploadSchema.optional(), existingResume: existingResumeSchema.optional(), coverLetter: uploadSchema }).strict().optional(),
       fields: z.record(z.string(), locatorSchema).optional(),
@@ -31,10 +33,11 @@ export const adapterSchema = z.object({
       validationErrors: locatorSchema.optional(), next: locatorSchema,
     }).strict()).min(1),
   }).strict().refine(x => !!x.jobId !== !!x.jobIdFromUrl, 'Choose exactly one application job ID source.'),
-  review: z.object({ ready: locatorSchema, identity: identitySchema.refine(x => !!x.account, 'Review must verify the exact account.'), resume: locatorSchema, coverLetter: locatorSchema,
-    answers: z.record(z.string(), locatorSchema), applicant: z.record(z.string(), locatorSchema), submit: locatorSchema }).strict(),
-  confirmation: z.object({ ready: locatorSchema, jobId: locatorSchema, reference: locatorSchema }).strict(),
-  history: z.object({ url: z.string(), ready: locatorSchema, entry: locatorSchema, jobIdAttribute: z.string(), reference: locatorSchema }).strict(),
+  review: z.object({ ready: locatorSchema, identity: identitySchema.refine(x => !!x.account !== !!x.accountFromConfigText, 'Review must verify the exact account.'), resume: locatorSchema, coverLetter: locatorSchema,
+    answers: z.record(z.string(), locatorSchema), applicant: z.record(z.string(), locatorSchema), submit: locatorSchema,
+    mustBeChecked: z.array(locatorSchema).optional(), mustBeUnchecked: z.array(locatorSchema).optional() }).strict(),
+  confirmation: z.object({ ready: locatorSchema, jobId: locatorSchema, reference: locatorSchema }).strict().optional(),
+  history: z.object({ url: z.string(), ready: locatorSchema, entry: locatorSchema, jobIdAttribute: z.string(), reference: locatorSchema }).strict().optional(),
 }).strict();
 
 const configSchema = z.object({
@@ -121,7 +124,11 @@ export async function loadConfig(file: string, overrides: Overrides = {}): Promi
   try { a = adapterSchema.parse(JSON.parse(await readFile(c.adapterPath, 'utf8'))); }
   catch { invalid('Missing or invalid UI adapter. Production requires a profile based on inspected SEEK UI; see docs/ADAPTERS.md.'); }
   if (c.environment === 'production' && a.kind !== 'observed') invalid('Fixture selectors cannot be used in production.');
-  for (const [url, permitted] of [[a.auth.url, origins], [a.history.url, c.allowedOrigins]] as const) {
+  if (a.auth.deferAccountUntilApplication && !a.application.accountFromConfigText)
+    invalid('Deferred account identity must be checked on Quick Apply before any upload.');
+  if (c.mode === 'submit' && (!a.confirmation || !a.history))
+    invalid('Submit mode requires observed confirmation and history mappings. This adapter is prepare-only.');
+  for (const [url, permitted] of [[a.auth.url, origins], ...(a.history ? [[a.history.url, c.allowedOrigins] as const] : [])] as const) {
     if (!permitted.includes(new URL(url, c.baseUrl).origin)) invalid('Adapter URL is outside configured origins.');
   }
   if (a.application.steps.filter(s => s.uploads).length !== 1) invalid('Adapter must have one explicit document step.');

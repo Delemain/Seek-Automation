@@ -3,7 +3,7 @@
   "baseUrl": "https://au.seek.com",
   "allowedOrigins": ["https://au.seek.com", "https://www.seek.com.au"],
   "authenticationOrigins": ["https://login.seek.com"],
-  "adapterPath": "./seek.verified.json",
+  "adapterPath": "./seek.prepare.candidate.json",
   "query": "AI Engineer",
   "location": "",
   "target": {

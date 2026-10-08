@@ -7,6 +7,8 @@ import { atomicJson } from './submission-ledger.js';
 import { WorkflowError } from './errors.js';
 
 export async function authenticate({ config: c, adapter: a }: Loaded, connection: BrowserConnection = {}) {
+  if (a.auth.deferAccountUntilApplication)
+    throw new WorkflowError('ACCOUNT_CHECK_DEFERRED', 'This prepare-only adapter verifies the exact account on Quick Apply before uploading. Use the signed-in dedicated Chrome profile with apply --mode prepare; standalone auth cannot save a verified session.', 3, 'blocked');
   const cdpEndpoint = connection.cdpEndpoint ? validateCdpEndpoint(connection.cdpEndpoint) : undefined;
   if (!cdpEndpoint && !process.stdin.isTTY) throw new WorkflowError('INTERACTIVE_LOGIN_REQUIRED', 'Run auth in an interactive terminal with a graphical browser. Passwords/MFA are entered only into SEEK.', 3, 'blocked');
   let browser;
@@ -29,7 +31,7 @@ export async function authenticate({ config: c, adapter: a }: Loaded, connection
     guard.checkPage(page);
     try {
       await expect(await unique(page, a.auth.ready)).toBeVisible();
-      await expect(await unique(page, a.auth.account)).toHaveText(c.account.expectedIdentifier);
+      await expect(await unique(page, a.auth.account!)).toHaveText(c.account.expectedIdentifier);
     } catch { throw new WorkflowError('ACCOUNT_MISMATCH', 'Expected account was not verified. No session state was saved.', 3, 'blocked'); }
     if (cdpEndpoint) console.log('Verified session in the dedicated Chrome profile. No cookies or storage state were copied or saved by this runner.');
     else { await atomicJson(c.account.storageStatePath, await context.storageState({ indexedDB: true })); console.log('Verified isolated session saved privately.'); }

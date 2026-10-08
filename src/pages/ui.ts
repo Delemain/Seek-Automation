@@ -51,14 +51,29 @@ export async function jobIdFromApplyHref(page: Page, spec: LocatorSpec, expected
   if (destination.origin !== new URL(page.url()).origin || destination.pathname !== `/job/${encodeURIComponent(expectedId)}/apply`)
     throw new WorkflowError('TARGET_MISMATCH', 'The observed Apply link does not target the approved job.', 4, 'blocked');
 }
+export async function exactConfiguredAccount(page: Page, c: Config) {
+  const expect = assertions(page);
+  const matches = page.getByText(c.account.expectedIdentifier, { exact: true }).filter({ visible: true });
+  try {
+    await expect(matches).toHaveCount(1);
+    await expect(matches).toBeVisible();
+    await expect(matches).toHaveText(c.account.expectedIdentifier);
+  } catch {
+    throw new WorkflowError('ACCOUNT_MISMATCH', 'The exact configured account identifier was not uniquely visible.', 3, 'blocked');
+  }
+}
 export async function checkAuthentication(page: Page, c: Config, a: Adapter) {
   if (await visible(page, a.auth.loginRequired) || await visible(page, a.auth.challenge))
     throw new WorkflowError('AUTH_REQUIRED', 'Login, MFA or human verification is required. Run npm run auth locally.', 3, 'blocked');
-  try { await exact(page, a.auth.account, c.account.expectedIdentifier); }
+  try { await assertions(page)(await unique(page, a.auth.ready)).toBeVisible(); }
+  catch { throw new WorkflowError('AUTH_REQUIRED', 'The signed-in SEEK account marker was not visible.', 3, 'blocked'); }
+  if (a.auth.deferAccountUntilApplication) return;
+  try { await exact(page, a.auth.account!, c.account.expectedIdentifier); }
   catch { throw new WorkflowError('ACCOUNT_MISMATCH', 'Expected account could not be verified. Refresh the isolated login state.', 3, 'blocked'); }
 }
 export async function identity(page: Page, c: Config, specs: Adapter['review']['identity']) {
-  if (specs.account) {
+  if (specs.accountFromConfigText) await exactConfiguredAccount(page, c);
+  else if (specs.account) {
     try { await exact(page, specs.account, c.account.expectedIdentifier); }
     catch { throw new WorkflowError('ACCOUNT_MISMATCH', 'Account identity changed or could not be verified.', 3, 'blocked'); }
   }
