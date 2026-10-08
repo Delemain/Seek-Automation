@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { captureControls, safePageAddress } from '../../src/inspection.js';
 
 test('inspection strips OAuth queries and fragments from page addresses', () => {
@@ -33,4 +35,20 @@ test('inspection records identity landmark structure without exposing email text
   expect(result.landmarks).toContainEqual(expect.objectContaining({ kind: 'accountEmail', parent: expect.objectContaining({ testId: 'profile-card' }) }));
   expect(result.landmarks).toContainEqual(expect.objectContaining({ kind: 'resume', element: expect.objectContaining({ testId: 'resume-name' }) }));
   expect(JSON.stringify(result)).not.toContain('private@example.invalid');
+});
+test('inspector callbacks remain self-contained under the Windows tsx runtime', async () => {
+  const script = `
+    import { captureControls } from './src/inspection.ts';
+    const callbacks = [];
+    const page = {
+      url: () => 'https://au.seek.com/job/94974243/apply/review',
+      locator: () => ({ count: async () => 0, evaluateAll: async fn => { callbacks.push(fn); return []; } }),
+    };
+    await captureControls(page);
+    if (callbacks.length !== 2 || callbacks.some(fn => fn.toString().includes('__name')))
+      throw Error('A browser callback depends on a tsx-injected helper');
+    console.log('self-contained');
+  `;
+  const result = await promisify(execFile)(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', script]);
+  expect(result.stdout).toContain('self-contained');
 });

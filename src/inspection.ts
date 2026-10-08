@@ -53,12 +53,6 @@ export async function captureControls(page: Page) {
       ['jobTitle', 'AI Engineer'], ['employer', 'SustainRecruit'],
       ['resume', 'Resume.docx'], ['coverLetter', 'Cover Letter.docx'], ['jobId', '94974243'],
     ];
-    const attrs = (el: Element | null) => el ? {
-      tag: el.tagName.toLowerCase(), id: el.id || undefined,
-      testId: el.getAttribute('data-testid') ?? undefined,
-      automation: el.getAttribute('data-automation') ?? undefined,
-      role: el.getAttribute('role') ?? undefined,
-    } : undefined;
     return elements.flatMap(el => {
       const box = el.getBoundingClientRect();
       if (!box.width || !box.height || getComputedStyle(el).visibility === 'hidden') return [];
@@ -67,7 +61,21 @@ export async function captureControls(page: Page) {
         .map(node => node.textContent ?? '').join(' ').replace(/\s+/g, ' ').trim();
       const kinds = known.filter(([, value]) => full === value || direct === value).map(([kind]) => kind);
       if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(full) || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(direct)) kinds.push('accountEmail');
-      return kinds.map(kind => ({ kind, element: attrs(el), parent: attrs(el.parentElement) }));
+      return kinds.map(kind => ({
+        kind,
+        element: {
+          tag: el.tagName.toLowerCase(), id: el.id || undefined,
+          testId: el.getAttribute('data-testid') ?? undefined,
+          automation: el.getAttribute('data-automation') ?? undefined,
+          role: el.getAttribute('role') ?? undefined,
+        },
+        parent: el.parentElement ? {
+          tag: el.parentElement.tagName.toLowerCase(), id: el.parentElement.id || undefined,
+          testId: el.parentElement.getAttribute('data-testid') ?? undefined,
+          automation: el.parentElement.getAttribute('data-automation') ?? undefined,
+          role: el.parentElement.getAttribute('role') ?? undefined,
+        } : undefined,
+      }));
     }).slice(0, 80);
   });
   return { capturedAt: new Date().toISOString(), page: safePageAddress(page.url()),
