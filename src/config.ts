@@ -40,7 +40,7 @@ const configSchema = z.object({
   baseUrl: z.string().url().default('https://www.seek.com.au'),
   allowedOrigins: z.array(z.string().url()).min(1),
   authenticationOrigins: z.array(z.string().url()).default([]),
-  adapterPath: z.string().min(1), query: z.string().min(1), location: z.string().min(1),
+  adapterPath: z.string().min(1), query: z.string().min(1), location: z.string(),
   target: z.object({ jobId: z.string().min(1), expectedTitle: z.string().min(1), expectedEmployer: z.string().min(1) }).strict(),
   account: z.object({ expectedIdentifier: z.string().min(1), storageStatePath: z.string().min(1) }).strict(),
   documents: z.object({ resumePath: z.string().min(1).optional(), existingResumeFilename: z.string().min(1).optional(), coverLetterPath: z.string().min(1),

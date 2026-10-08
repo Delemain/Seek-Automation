@@ -35,6 +35,16 @@ test('prepare searches exact ID, uploads both new files despite reversed inputs,
     expect((await readFile(result.artifacts.result, 'utf8'))).not.toContain('test@example.invalid');
   });
 });
+test('name-only search clears a prefilled location and still selects the exact job', async () => {
+  await scenario({ prefilledSearchLocation: true }, async (loaded, server) => {
+    loaded.config.location = '';
+    const result = await run(loaded);
+    expect(result.status, result.message).toBe('prepared');
+    expect(server.state.searches[0]).toEqual({ query: 'QA test', location: '' });
+    expect(server.state.selectedJobs).toEqual(['94974243']);
+    expect(server.state.submissions).toBe(0);
+  });
+});
 for (const [unselectedResume, mode] of [[false, 'prepare'], [false, 'submit'], [true, 'prepare']] as const) {
   test(unselectedResume ? 'stored résumé not selected stops before uploading the cover letter' : `${mode} uses the selected SEEK résumé and unchanged profile with a local cover letter`, async () => {
     const server = await startFixture({ existingResume: true, unselectedResume, profileOnly: true, radioCoverCompletion: true });

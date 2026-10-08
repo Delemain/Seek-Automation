@@ -21,6 +21,11 @@ test('paths are relative to configuration, hashes match content, CLI values over
     expect(l.config.maxSearchPages).toBe(5);
   } finally { await rm(f.dir, { recursive: true, force: true }); }
 });
+test('an empty search location is valid for a name-only search', async () => {
+  const f = await fixtureConfig('http://127.0.0.1:12345');
+  try { expect((await loadConfig(f.file, { location: '' })).config.location).toBe(''); }
+  finally { await rm(f.dir, { recursive: true, force: true }); }
+});
 test('validation CLI works from another directory, without a browser or reachable server', async () => {
   const f = await fixtureConfig('http://127.0.0.1:1');
   try {

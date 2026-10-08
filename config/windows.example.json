@@ -4,8 +4,8 @@
   "allowedOrigins": ["https://au.seek.com", "https://www.seek.com.au"],
   "authenticationOrigins": ["https://login.seek.com"],
   "adapterPath": "./seek.verified.json",
-  "query": "AI Engineer SustainRecruit",
-  "location": "Sydney NSW",
+  "query": "AI Engineer",
+  "location": "",
   "target": {
     "jobId": "94974243",
     "expectedTitle": "AI Engineer",

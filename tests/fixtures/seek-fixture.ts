@@ -25,7 +25,7 @@ export const fixtureAdapter: Adapter = {
   confirmation: { ready: id('success'), jobId: id('confirmed-job'), reference: id('reference') },
   history: { url: '/history', ready: id('history'), entry: id('history-entry'), jobIdAttribute: 'data-job-id', reference: id('history-reference') },
 };
-export type Options = { expired?: boolean; unknownQuestion?: boolean; external?: boolean; popup?: boolean; loseConfirmation?: boolean; existingResume?: boolean; unselectedResume?: boolean; profileOnly?: boolean; radioCoverCompletion?: boolean;
+export type Options = { expired?: boolean; unknownQuestion?: boolean; external?: boolean; popup?: boolean; loseConfirmation?: boolean; existingResume?: boolean; unselectedResume?: boolean; profileOnly?: boolean; radioCoverCompletion?: boolean; prefilledSearchLocation?: boolean;
   missing?: boolean; ambiguous?: boolean; mismatch?: boolean; alreadyApplied?: boolean; uploadFailure?: boolean; pagination?: boolean; challenge?: boolean };
 function html(body: string) { return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Local workflow fixture</title></head><body>${body}</body></html>`; }
 const account = '<div data-testid="account">test@example.invalid</div>';
@@ -40,7 +40,7 @@ export async function startFixture(options: Options = {}) {
     if (options.expired || !req.headers.cookie?.includes('fixture_session=approved')) { res.end(html('<h1 data-testid="login">Sign in</h1>')); return; }
     if (url.pathname === '/account') { res.end(html(account)); return; }
     if (url.pathname === '/') {
-      res.end(html(`${account}<form data-testid="search" action="/search"><label>Keywords<input name="q"></label><label>Location<input name="location"></label><button>Search</button></form>`)); return;
+      res.end(html(`${account}<form data-testid="search" action="/search"><label>Keywords<input name="q"></label><label>Location<input name="location"${options.prefilledSearchLocation ? ' value="Melbourne VIC"' : ''}></label><button>Search</button></form>`)); return;
     }
     if (url.pathname === '/search') {
       state.searches.push({ query: url.searchParams.get('q') ?? '', location: url.searchParams.get('location') ?? '' });
