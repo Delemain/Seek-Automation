@@ -11,6 +11,7 @@ export const locatorSchema = z.object({
 }).strict().refine(x => x.by !== 'role' || !!x.role, 'Role locators need a role');
 const identitySchema = z.object({ account: locatorSchema, jobId: locatorSchema, title: locatorSchema, employer: locatorSchema }).strict();
 const uploadSchema = z.object({ input: locatorSchema, completed: locatorSchema, filename: locatorSchema, error: locatorSchema.optional() }).strict();
+const existingResumeSchema = z.object({ option: locatorSchema }).strict();
 export const adapterSchema = z.object({
   kind: z.enum(['fixture', 'observed']),
   observedAt: z.string().min(1), evidence: z.string().min(1),
@@ -21,7 +22,7 @@ export const adapterSchema = z.object({
   job: z.object({ ready: locatorSchema, identity: identitySchema, apply: locatorSchema, alreadyApplied: locatorSchema.optional() }).strict(),
   application: z.object({ ready: locatorSchema, jobId: locatorSchema, alreadyApplied: locatorSchema.optional(),
     steps: z.array(z.object({ name: z.string().min(1), ready: locatorSchema,
-      uploads: z.object({ resume: uploadSchema, coverLetter: uploadSchema }).strict().optional(),
+      uploads: z.object({ resume: uploadSchema.optional(), existingResume: existingResumeSchema.optional(), coverLetter: uploadSchema }).strict().optional(),
       fields: z.record(z.string(), locatorSchema).optional(),
       questionRegion: locatorSchema.optional(), requiredQuestions: locatorSchema.optional(),
       validationErrors: locatorSchema.optional(), next: locatorSchema,
@@ -41,10 +42,10 @@ const configSchema = z.object({
   adapterPath: z.string().min(1), query: z.string().min(1), location: z.string().min(1),
   target: z.object({ jobId: z.string().min(1), expectedTitle: z.string().min(1), expectedEmployer: z.string().min(1) }).strict(),
   account: z.object({ expectedIdentifier: z.string().min(1), storageStatePath: z.string().min(1) }).strict(),
-  documents: z.object({ resumePath: z.string().min(1), coverLetterPath: z.string().min(1),
+  documents: z.object({ resumePath: z.string().min(1).optional(), existingResumeFilename: z.string().min(1).optional(), coverLetterPath: z.string().min(1),
     allowedExtensions: z.array(z.enum(['.doc', '.docx', '.pdf'])).min(1).default(['.doc', '.docx', '.pdf']),
     maxBytes: z.number().int().positive().max(100_000_000).default(5_000_000),
-  }).strict(),
+  }).strict().refine(d => !!d.resumePath !== !!d.existingResumeFilename, 'Configure exactly one of resumePath or existingResumeFilename.'),
   applicant: z.object({ firstName: z.string().min(1), lastName: z.string().min(1), email: z.string().email(), phone: z.string().min(1) }).strict(),
   answers: z.array(z.object({ id: z.string().min(1), locator: locatorSchema,
     type: z.enum(['text', 'radio', 'select', 'checkbox', 'multi-select']),
@@ -63,8 +64,9 @@ const configSchema = z.object({
 export type Config = z.infer<typeof configSchema>;
 export type Adapter = z.infer<typeof adapterSchema>;
 export type LocatorSpec = z.infer<typeof locatorSchema>;
-export type DocumentInfo = { filename: string; sha256: string; bytes: number; path: string };
-export type Loaded = { config: Config; adapter: Adapter; documents: { resume: DocumentInfo; coverLetter: DocumentInfo } };
+export type DocumentInfo = { source: 'local'; filename: string; sha256: string; bytes: number; path: string };
+export type ExistingResumeInfo = { source: 'seek'; filename: string };
+export type Loaded = { config: Config; adapter: Adapter; documents: { resume: DocumentInfo | ExistingResumeInfo; coverLetter: DocumentInfo } };
 export type Overrides = Partial<Pick<Config, 'query' | 'location' | 'mode' | 'headed'>>;
 
 function resolveFile(base: string, value: string): string {
@@ -79,7 +81,7 @@ export async function documentInfo(file: string, c: Config['documents']): Promis
     if (!s.size || s.size > c.maxBytes) invalid('Document is empty or exceeds the configured size limit.');
     await access(file, constants.R_OK);
     const content = await readFile(file);
-    return { filename: path.basename(file), sha256: createHash('sha256').update(content).digest('hex'), bytes: content.length, path: file };
+    return { source: 'local', filename: path.basename(file), sha256: createHash('sha256').update(content).digest('hex'), bytes: content.length, path: file };
   } catch (e) {
     if (e instanceof WorkflowError) throw e;
     invalid(`Document preflight failed (${(e as NodeJS.ErrnoException).code ?? 'unreadable'}). Check file paths, type, size and permissions.`);
@@ -106,7 +108,9 @@ export async function loadConfig(file: string, overrides: Overrides = {}): Promi
   const dir = path.dirname(path.resolve(file));
   c.adapterPath = resolveFile(dir, c.adapterPath);
   c.account.storageStatePath = resolveFile(dir, c.account.storageStatePath);
-  c.documents.resumePath = resolveFile(dir, c.documents.resumePath);
+  if (c.documents.resumePath) c.documents.resumePath = resolveFile(dir, c.documents.resumePath);
+  if (c.documents.existingResumeFilename && (/[\\/]/.test(c.documents.existingResumeFilename) || c.documents.existingResumeFilename.trim() !== c.documents.existingResumeFilename))
+    invalid('existingResumeFilename must be one exact displayed filename, not a path.');
   c.documents.coverLetterPath = resolveFile(dir, c.documents.coverLetterPath);
   c.artifactsDirectory = resolveFile(dir, c.artifactsDirectory);
   c.ledgerPath = resolveFile(dir, c.ledgerPath);
@@ -117,9 +121,15 @@ export async function loadConfig(file: string, overrides: Overrides = {}): Promi
   for (const [url, permitted] of [[a.auth.url, origins], [a.history.url, c.allowedOrigins]] as const) {
     if (!permitted.includes(new URL(url, c.baseUrl).origin)) invalid('Adapter URL is outside configured origins.');
   }
-  if (a.application.steps.filter(s => s.uploads).length !== 1) invalid('Adapter must have one explicit upload step for both documents.');
+  if (a.application.steps.filter(s => s.uploads).length !== 1) invalid('Adapter must have one explicit document step.');
+  const uploads = a.application.steps.find(s => s.uploads)?.uploads;
+  if (!!uploads?.resume === !!uploads?.existingResume || !!uploads?.existingResume !== !!c.documents.existingResumeFilename)
+    invalid('Adapter résumé source must match the configured local file or existing SEEK résumé.');
   for (const answer of c.answers) if (!a.review.answers[answer.id]) invalid(`Missing review evidence for answer ${answer.id}.`);
   for (const key of Object.keys(c.applicant)) if (!a.review.applicant[key]) invalid(`Missing review evidence for applicant field ${key}.`);
-  const [resume, coverLetter] = await Promise.all([documentInfo(c.documents.resumePath, c.documents), documentInfo(c.documents.coverLetterPath, c.documents)]);
+  const [resume, coverLetter] = await Promise.all([
+    c.documents.resumePath ? documentInfo(c.documents.resumePath, c.documents) : Promise.resolve({ source: 'seek' as const, filename: c.documents.existingResumeFilename! }),
+    documentInfo(c.documents.coverLetterPath, c.documents),
+  ]);
   return { config: c, adapter: a, documents: { resume, coverLetter } };
 }

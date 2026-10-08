@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { mkdir, chmod } from 'node:fs/promises';
 import { chromium, type BrowserContext, type Browser } from '@playwright/test';
-import type { Loaded } from './config.js';
+import type { Loaded, DocumentInfo, ExistingResumeInfo } from './config.js';
 import { WorkflowError, type TerminalStatus } from './errors.js';
 import { Ledger, atomicJson, accountReference } from './submission-ledger.js';
 import { configureContext, NavigationGuard, visible } from './pages/ui.js';
@@ -20,7 +20,7 @@ export function validateCdpEndpoint(value: string): string {
 export type Result = {
   runId: string; startedAt: string; finishedAt: string; operation: 'apply' | 'reconcile';
   mode: string; query: string; location: string; target: Loaded['config']['target']; accountReference: string;
-  documents: { resume: { filename: string; sha256: string; bytes: number }; coverLetter: { filename: string; sha256: string; bytes: number } };
+  documents: { resume: Omit<DocumentInfo, 'path'> | ExistingResumeInfo; coverLetter: Omit<DocumentInfo, 'path'> };
   phase: string; status: TerminalStatus; code: string; message: string; exitCode: number; confirmation?: string;
   artifacts: { result: string; screenshot?: string; trace?: string };
 };
@@ -32,10 +32,10 @@ export async function runWorkflow(loaded: Loaded, operation: 'apply' | 'reconcil
   const runId = randomUUID();
   const directory = path.join(c.artifactsDirectory, runId);
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  const strip = ({ path: _path, ...rest }: typeof d.resume) => rest;
+  const strip = ({ path: _path, ...rest }: DocumentInfo) => rest;
   const result: Result = { runId, startedAt: new Date().toISOString(), finishedAt: '', operation, mode: c.mode,
     query: c.query, location: c.location, target: c.target, accountReference: accountReference(c),
-    documents: { resume: strip(d.resume), coverLetter: strip(d.coverLetter) },
+    documents: { resume: d.resume.source === 'local' ? strip(d.resume) : d.resume, coverLetter: strip(d.coverLetter) },
     phase: 'preflight', status: 'failed', code: 'WORKFLOW_FAILED', message: '', exitCode: 6,
     artifacts: { result: path.join(directory, 'result.json') } };
   const ledger = new Ledger(c);

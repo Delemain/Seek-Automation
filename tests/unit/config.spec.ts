@@ -15,6 +15,7 @@ test('paths are relative to configuration, hashes match content, CLI values over
     expect(l.config.query).toBe('new query'); expect(l.config.location).toBe('Melbourne VIC');
     expect(l.config.mode).toBe('submit'); expect(l.config.headed).toBe(true);
     expect(l.config.documents.resumePath).toBe(path.join(f.dir, 'Resume.docx'));
+    if (l.documents.resume.source !== 'local') throw new Error('Fixture résumé should be a local file');
     expect(l.documents.resume.sha256).toHaveLength(64);
     expect(l.documents.resume.sha256).not.toBe(l.documents.coverLetter.sha256);
     expect(l.config.maxSearchPages).toBe(5);

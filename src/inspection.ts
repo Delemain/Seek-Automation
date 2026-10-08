@@ -17,7 +17,8 @@ export async function captureControls(page: Page) {
   const controls = await page.locator('input, textarea, select, button, [role="button"], [role="combobox"], [role="radio"], [role="checkbox"], fieldset').evaluateAll(elements => {
     return elements.filter(el => {
       const box = el.getBoundingClientRect();
-      return box.width > 0 && box.height > 0 && getComputedStyle(el).visibility !== 'hidden' && el.getAttribute('type') !== 'password';
+      const fileInput = el.tagName === 'INPUT' && el.getAttribute('type') === 'file';
+      return fileInput || (box.width > 0 && box.height > 0 && getComputedStyle(el).visibility !== 'hidden' && el.getAttribute('type') !== 'password');
     }).map(el => {
       const typed = el as HTMLInputElement;
       const labels = 'labels' in el ? Array.from(typed.labels ?? []).map(label => {
@@ -29,6 +30,7 @@ export async function captureControls(page: Page) {
       const buttonText = el.tagName === 'BUTTON' || el.getAttribute('role') === 'button' ? el.textContent?.replace(/\s+/g, ' ').trim().slice(0,300) || undefined : undefined;
       return {
         tag: el.tagName.toLowerCase(), type: el.getAttribute('type') ?? undefined,
+        accept: el.getAttribute('type') === 'file' ? el.getAttribute('accept') ?? undefined : undefined,
         id: el.id || undefined, name: el.getAttribute('name') ?? undefined,
         role: el.getAttribute('role') ?? undefined, ariaLabel: el.getAttribute('aria-label')?.replace(/\s+/g, ' ').trim().slice(0,300) || undefined,
         testId: el.getAttribute('data-testid') ?? undefined, automation: el.getAttribute('data-automation') ?? undefined,

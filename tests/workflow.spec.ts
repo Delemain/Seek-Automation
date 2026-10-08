@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { readFile, rm } from 'node:fs/promises';
-import { startFixture, fixtureConfig, type Options } from './fixtures/seek-fixture.js';
+import { readFile, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { startFixture, fixtureConfig, fixtureAdapter, type Options } from './fixtures/seek-fixture.js';
 import { loadConfig, type Loaded } from '../src/config.js';
 import { runWorkflow } from '../src/reporting.js';
 import { Ledger } from '../src/submission-ledger.js';
@@ -34,6 +35,34 @@ test('prepare searches exact ID, uploads both new files despite reversed inputs,
     expect((await readFile(result.artifacts.result, 'utf8'))).not.toContain('test@example.invalid');
   });
 });
+for (const unselectedResume of [false, true]) {
+  test(unselectedResume ? 'stored résumé not selected stops before uploading the cover letter' : 'prepare verifies the preselected SEEK résumé and uploads only the local cover letter', async () => {
+    const server = await startFixture({ existingResume: true, unselectedResume });
+    const files = await fixtureConfig(server.origin);
+    try {
+      const config = JSON.parse(await readFile(files.file, 'utf8'));
+      config.documents = { existingResumeFilename: 'Resume.docx', coverLetterPath: './Cover Letter.docx' };
+      await writeFile(files.file, JSON.stringify(config));
+      const adapter = structuredClone(fixtureAdapter);
+      adapter.application.steps[0].uploads!.existingResume = { option: { by: 'role', role: 'radio', value: 'Resume.docx' } };
+      delete adapter.application.steps[0].uploads!.resume;
+      await writeFile(path.join(files.dir, 'adapter.json'), JSON.stringify(adapter));
+      await rm(path.join(files.dir, 'Resume.docx'));
+      const loaded = await loadConfig(files.file);
+      expect(loaded.documents.resume).toEqual({ source: 'seek', filename: 'Resume.docx' });
+      const result = await run(loaded);
+      if (unselectedResume) {
+        expect(result.code).toBe('STORED_RESUME_MISMATCH');
+        expect(server.state.uploads).toHaveLength(0);
+      } else {
+        expect(result.status, result.message).toBe('prepared');
+        expect(server.state.uploads.map(f => f.filename)).toEqual(['Cover Letter.docx']);
+        expect(result.documents.resume).toEqual({ source: 'seek', filename: 'Resume.docx' });
+      }
+      expect(server.state.submissions).toBe(0);
+    } finally { await server.close(); await rm(files.dir, { recursive: true, force: true }); }
+  });
+}
 test('confirmed submission is durable and a new invocation cannot duplicate it', async () => {
   await scenario({}, async (loaded, server) => {
     loaded.config.mode = 'submit';

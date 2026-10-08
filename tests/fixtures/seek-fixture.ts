@@ -25,7 +25,7 @@ export const fixtureAdapter: Adapter = {
   confirmation: { ready: id('success'), jobId: id('confirmed-job'), reference: id('reference') },
   history: { url: '/history', ready: id('history'), entry: id('history-entry'), jobIdAttribute: 'data-job-id', reference: id('history-reference') },
 };
-export type Options = { expired?: boolean; unknownQuestion?: boolean; external?: boolean; popup?: boolean; loseConfirmation?: boolean;
+export type Options = { expired?: boolean; unknownQuestion?: boolean; external?: boolean; popup?: boolean; loseConfirmation?: boolean; existingResume?: boolean; unselectedResume?: boolean;
   missing?: boolean; ambiguous?: boolean; mismatch?: boolean; alreadyApplied?: boolean; uploadFailure?: boolean; pagination?: boolean; challenge?: boolean };
 function html(body: string) { return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Local workflow fixture</title></head><body>${body}</body></html>`; }
 const account = '<div data-testid="account">test@example.invalid</div>';
@@ -56,15 +56,19 @@ export async function startFixture(options: Options = {}) {
     }
     if (url.pathname === '/apply') {
       // Cover letter intentionally comes first. No positional upload locators can pass.
-      res.end(html(`${jobIdentity}<section data-testid="uploads"><label>Upload cover letter<input type="file" id="cover"></label><div data-testid="cover-name"></div><p hidden data-testid="cover-complete">Uploaded</p><label>Upload résumé<input type="file" id="resume"></label><div data-testid="resume-name"></div><p hidden data-testid="resume-complete">Uploaded</p><p data-testid="upload-error" hidden>Upload failed</p><button id="continue" disabled>Continue</button></section><script>
+      const resumeControl = options.existingResume
+        ? `<fieldset aria-label="Resumé"><label><input type="radio" name="resume" ${options.unselectedResume ? '' : 'checked'}>Resume.docx</label></fieldset>`
+        : '<label>Upload résumé<input type="file" id="resume"></label><div data-testid="resume-name"></div><p hidden data-testid="resume-complete">Uploaded</p>';
+      res.end(html(`${jobIdentity}<section data-testid="uploads"><label>Upload cover letter<input type="file" id="cover"></label><div data-testid="cover-name"></div><p hidden data-testid="cover-complete">Uploaded</p>${resumeControl}<p data-testid="upload-error" hidden>Upload failed</p><button id="continue" disabled>Continue</button></section><script>
         let count = 0;
-        for (const id of ['cover','resume']) document.getElementById(id).onchange = async e => {
+        ${options.existingResume ? "sessionStorage.setItem('resume','Resume.docx');" : ''}
+        for (const id of ${options.existingResume ? "['cover']" : "['cover','resume']"}) document.getElementById(id).onchange = async e => {
           const file=e.target.files[0]; const body=new FormData(); body.append('document',file);
           const response=await fetch('/upload',{method:'POST',body});
           if (!response.ok) { document.querySelector('[data-testid="upload-error"]').hidden=false; return; }
           sessionStorage.setItem(id,file.name); document.querySelector('[data-testid="'+id+'-name"]').textContent=file.name;
           document.querySelector('[data-testid="'+id+'-complete"]').hidden=false;
-          if (++count===2) document.getElementById('continue').disabled=false;
+          if (++count===${options.existingResume ? 1 : 2}) document.getElementById('continue').disabled=false;
         };
         document.getElementById('continue').onclick=()=>location.href='/questions';
       </script>`)); return;

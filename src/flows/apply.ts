@@ -35,7 +35,7 @@ export async function applyFlow(loaded: Loaded, state: FlowState, ledger: Ledger
     await ledger.ensureUnused();
     const now = new Date().toISOString();
     const entry: Entry = { key: ledger.key, runId, state: 'submission_attempted', createdAt: now, updatedAt: now,
-      documentHashes: [loaded.documents.resume.sha256, loaded.documents.coverLetter.sha256] };
+      documentHashes: [...(loaded.documents.resume.source === 'local' ? [loaded.documents.resume.sha256] : []), loaded.documents.coverLetter.sha256] };
     await ledger.write(entry);
     state.attempted = true; state.phase = 'submission';
     try {

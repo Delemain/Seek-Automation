@@ -28,3 +28,11 @@ The fixtures use synthetic applicant data and synthetic document bytes in tempor
 - Windows/macOS execution and a freshly published cloud task have not been tested. npm scripts are portable, but this record establishes Linux current-instance behavior only.
 
 The environment configuration contains the two working SEEK hosts and installation/startup instructions. The updated draft additionally requests the observed login host, application stylesheet host and image host. Review/save and publish to activate additions; a draft save does not itself apply network changes or validate production behavior. The Windows inspection helper is the next operator step toward the authenticated adapter. It does not save session credentials and is not a live prepare/submit pass.
+
+## 8 October 2026 follow-up
+
+The operator supplied five structural captures from an authenticated Quick Apply tab for job 94974243. They show document selection, a SEEK Profile step, and a review screen. The résumé was already selected from the operator's SEEK account. The operator uploaded `Cover Letter.docx` from their PC between the first two captures. The final two captures are the same review screen, not two different steps. No final submit or confirmation was captured.
+
+The runner now has a separate stored-résumé path: it verifies that the exact configured filename is the already checked radio and uploads only the local cover letter. It stops before upload when that résumé is not selected. The existing two-local-file path remains available. `npm run typecheck` passed; the local Chromium fixture run reached review with the stored résumé, uploaded only the cover letter, and did not submit. `PLAYWRIGHT_EXECUTABLE_PATH=/usr/bin/chromium npm test` passed all 36 tests with no failures. These are local fixture results. The production adapter still lacks verified file-input and upload-completion selectors, static review/account/job values, search, confirmation, and history mappings. No live automated prepare or submit was run.
+
+The inspection helper was then extended to include hidden file-input metadata without reading file values. Typecheck, all 18 unit tests, and the `tsx` browser-callback self-containment check passed. The operator has not yet supplied a new capture from this helper version.

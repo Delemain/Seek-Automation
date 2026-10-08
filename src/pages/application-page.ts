@@ -4,7 +4,7 @@ import { documentInfo } from '../config.js';
 import { WorkflowError } from '../errors.js';
 import { assertions, identity, locate, unique, visible, exact, type NavigationGuard } from './ui.js';
 
-async function upload(page: Page, spec: NonNullable<Adapter['application']['steps'][number]['uploads']>['resume'], doc: DocumentInfo, c: Config) {
+async function upload(page: Page, spec: NonNullable<Adapter['application']['steps'][number]['uploads']>['coverLetter'], doc: DocumentInfo, c: Config) {
   const expect = assertions(page);
   const now = await documentInfo(doc.path, c.documents);
   if (now.sha256 !== doc.sha256) throw new WorkflowError('DOCUMENT_CHANGED', 'A document changed after preflight. Start a new run.', 2, 'blocked');
@@ -39,7 +39,17 @@ export async function completeApplication(page: Page, loaded: Loaded, guard: Nav
     guard.checkPage(page);
     await expect(locate(page, step.ready)).toBeVisible();
     if (step.uploads) {
-      await upload(page, step.uploads.resume, docs.resume, c);
+      if (docs.resume.source === 'seek') {
+        try {
+          const selected = await unique(page, step.uploads.existingResume!.option);
+          await expect(selected).toHaveAccessibleName(docs.resume.filename);
+          await expect(selected).toBeChecked();
+        } catch {
+          throw new WorkflowError('STORED_RESUME_MISMATCH', 'The configured SEEK résumé is missing or not selected. Check the stored document before continuing.', 5, 'blocked');
+        }
+      } else {
+        await upload(page, step.uploads.resume!, docs.resume, c);
+      }
       await upload(page, step.uploads.coverLetter, docs.coverLetter, c);
     }
     for (const [key, spec] of Object.entries(step.fields ?? {})) {

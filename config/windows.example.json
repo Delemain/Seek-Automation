@@ -16,7 +16,7 @@
     "storageStatePath": "../.auth/seek.json"
   },
   "documents": {
-    "resumePath": "C:\\Maxim\\seek\\Resume.docx",
+    "existingResumeFilename": "Resume.docx",
     "coverLetterPath": "C:\\Maxim\\seek\\Cover Letter.docx",
     "allowedExtensions": [".doc", ".docx", ".pdf"],
     "maxBytes": 5000000

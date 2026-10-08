@@ -45,6 +45,6 @@ It checks the job title, employer, location, job ID in the URL, and exact applic
 
 ## After authenticated mappings are implemented
 
-The inspection data lets the developer complete and locally verify the actual page adapter. The final setup still needs your account identifier, applicant fields and screening answers, plus observed upload and review checks. The two known Word paths are already in `config/windows.example.json`. Do not expect that example alone to make `npm run auth` or `npm run apply` succeed today: a verified application adapter and completed private configuration are required.
+The inspection data lets the developer complete and locally verify the actual page adapter. The final setup still needs your account identifier, applicant fields and screening answers, plus observed upload and review checks. The Windows example now uses the preselected `Resume.docx` in SEEK and the local cover letter at `C:\Maxim\seek\Cover Letter.docx`. Do not expect that example alone to make `npm run auth` or `npm run apply` succeed today: a verified application adapter and completed private configuration are required.
 
 The first automated application run will then use `--mode prepare`, verifying the final review without final submission. Reliable observed submission/history evidence must be added before enabling submit mode. This capture tool does not save an authenticated session; the verified `auth` command will do so during that later setup.
