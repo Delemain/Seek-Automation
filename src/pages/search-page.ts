@@ -14,7 +14,8 @@ export async function search(page: Page, { config: c, adapter: a }: Loaded, guar
   await (await unique(page, a.search.submit)).click();
   for (let n = 0; n < c.maxSearchPages; n++) {
     guard.checkPage(page);
-    await expect(locate(page, a.search.results)).toBeVisible();
+    // SEEK's observed results are a collection of job cards, not one results wrapper.
+    await expect(locate(page, a.search.results).first()).toBeVisible();
     const cards = locate(page, a.search.card);
     const matches = [];
     for (const card of await cards.all()) if (await card.getAttribute(a.search.cardJobIdAttribute) === c.target.jobId) matches.push(card);

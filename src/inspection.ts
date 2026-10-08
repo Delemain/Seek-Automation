@@ -46,6 +46,30 @@ export async function captureControls(page: Page) {
       };
     });
   });
+  // Named, read-only landmarks help map exact identity and document selectors.
+  // Never include their text: an account landmark may contain a private email.
+  const landmarks = await page.locator('h1,h2,h3,p,span,div,a,dd,strong').evaluateAll(elements => {
+    const known = [
+      ['jobTitle', 'AI Engineer'], ['employer', 'SustainRecruit'],
+      ['resume', 'Resume.docx'], ['coverLetter', 'Cover Letter.docx'], ['jobId', '94974243'],
+    ];
+    const attrs = (el: Element | null) => el ? {
+      tag: el.tagName.toLowerCase(), id: el.id || undefined,
+      testId: el.getAttribute('data-testid') ?? undefined,
+      automation: el.getAttribute('data-automation') ?? undefined,
+      role: el.getAttribute('role') ?? undefined,
+    } : undefined;
+    return elements.flatMap(el => {
+      const box = el.getBoundingClientRect();
+      if (!box.width || !box.height || getComputedStyle(el).visibility === 'hidden') return [];
+      const full = el.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+      const direct = Array.from(el.childNodes).filter(node => node.nodeType === Node.TEXT_NODE)
+        .map(node => node.textContent ?? '').join(' ').replace(/\s+/g, ' ').trim();
+      const kinds = known.filter(([, value]) => full === value || direct === value).map(([kind]) => kind);
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(full) || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(direct)) kinds.push('accountEmail');
+      return kinds.map(kind => ({ kind, element: attrs(el), parent: attrs(el.parentElement) }));
+    }).slice(0, 80);
+  });
   return { capturedAt: new Date().toISOString(), page: safePageAddress(page.url()),
-    scope: 'Visible control structure only; no field values, cookies, storage, network bodies or screenshots.', controls };
+    scope: 'Visible control and named-landmark structure only; no field values, landmark text, cookies, storage, network bodies or screenshots.', controls, landmarks };
 }

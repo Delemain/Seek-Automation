@@ -27,3 +27,10 @@ test('inspection captures job links without tracking parameters', async ({ page 
   expect(result.controls.find(c => c.tag === 'a')).toMatchObject({ href: 'https://www.seek.com.au/job/94974243', linkText: 'AI Engineer' });
   expect(JSON.stringify(result)).not.toContain('PRIVATE_TOKEN');
 });
+test('inspection records identity landmark structure without exposing email text', async ({ page }) => {
+  await page.setContent('<section data-testid="profile-card"><span>private@example.invalid</span></section><h1>AI Engineer</h1><p data-testid="resume-name">Resume.docx</p>');
+  const result = await captureControls(page);
+  expect(result.landmarks).toContainEqual(expect.objectContaining({ kind: 'accountEmail', parent: expect.objectContaining({ testId: 'profile-card' }) }));
+  expect(result.landmarks).toContainEqual(expect.objectContaining({ kind: 'resume', element: expect.objectContaining({ testId: 'resume-name' }) }));
+  expect(JSON.stringify(result)).not.toContain('private@example.invalid');
+});

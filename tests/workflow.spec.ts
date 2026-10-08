@@ -45,6 +45,22 @@ test('name-only search clears a prefilled location and still selects the exact j
     expect(server.state.submissions).toBe(0);
   });
 });
+for (const wrongApplyHref of [false, true]) test(`in-place SEEK job panel ${wrongApplyHref ? 'rejects a wrong Apply destination' : 'verifies exact Apply href and accessible identity'}`, async () => {
+  const server = await startFixture({ inlineDetail: true, wrongApplyHref });
+  const files = await fixtureConfig(server.origin);
+  try {
+    const adapter = structuredClone(fixtureAdapter);
+    adapter.search.results = { by: 'testId', value: 'job-card' };
+    const apply = { by: 'role' as const, role: 'link', value: 'Apply for QA Test Engineer at Fixture Employer' };
+    adapter.job = { ready: apply, identity: { account: { by: 'testId', value: 'account' }, jobIdFromApplyHref: apply, titleEmployerFromApplyName: apply }, apply };
+    await writeFile(path.join(files.dir, 'adapter.json'), JSON.stringify(adapter));
+    const result = await run(await loadConfig(files.file));
+    expect(result.code, result.message).toBe(wrongApplyHref ? 'TARGET_MISMATCH' : 'PREPARED');
+    expect(server.state.selectedJobs).toHaveLength(0);
+    expect(server.state.uploads).toHaveLength(wrongApplyHref ? 0 : 2);
+    expect(server.state.submissions).toBe(0);
+  } finally { await server.close(); await rm(files.dir, { recursive: true, force: true }); }
+});
 for (const [unselectedResume, mode] of [[false, 'prepare'], [false, 'submit'], [true, 'prepare']] as const) {
   test(unselectedResume ? 'stored résumé not selected stops before uploading the cover letter' : `${mode} uses the selected SEEK résumé and unchanged profile with a local cover letter`, async () => {
     const server = await startFixture({ existingResume: true, unselectedResume, profileOnly: true, radioCoverCompletion: true });

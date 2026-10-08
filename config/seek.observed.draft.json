@@ -1,0 +1,61 @@
+{
+  "kind": "observed-draft",
+  "observedAt": "2026-10-08",
+  "evidence": "Operator structural captures of signed-in search, document selection, profile, and review; public job check. Not a verified production adapter.",
+  "search": {
+    "ready": { "by": "css", "value": "#keywords-input" },
+    "query": { "by": "css", "value": "#keywords-input" },
+    "location": { "by": "css", "value": "#SearchBar__Where" },
+    "submit": { "by": "role", "role": "button", "value": "Submit search" },
+    "results": { "by": "testId", "value": "job-card" },
+    "card": { "by": "testId", "value": "job-card" },
+    "cardJobIdAttribute": "data-job-id",
+    "cardLink": { "by": "testId", "value": "job-card-title" }
+  },
+  "job": {
+    "ready": { "by": "role", "role": "link", "value": "Apply for AI Engineer at SustainRecruit" },
+    "identity": {
+      "jobIdFromApplyHref": { "by": "role", "role": "link", "value": "Apply for AI Engineer at SustainRecruit" },
+      "titleEmployerFromApplyName": { "by": "role", "role": "link", "value": "Apply for AI Engineer at SustainRecruit" }
+    },
+    "apply": { "by": "role", "role": "link", "value": "Apply for AI Engineer at SustainRecruit" }
+  },
+  "application": {
+    "ready": { "by": "testId", "value": "continue-button" },
+    "jobIdFromUrl": true,
+    "steps": [
+      {
+        "name": "Choose documents",
+        "ready": { "by": "testId", "value": "continue-button" },
+        "uploads": {
+          "existingResume": { "option": { "by": "role", "role": "radio", "value": "Resume.docx" } },
+          "coverLetter": {
+            "input": { "by": "css", "value": "#coverLetter-fileFile" },
+            "selectedRadio": { "by": "css", "value": "input[type='radio'][data-testid='coverLetter-method-upload']" }
+          }
+        },
+        "next": { "by": "testId", "value": "continue-button" }
+      },
+      {
+        "name": "Keep SEEK Profile unchanged",
+        "ready": { "by": "testId", "value": "add-skills" },
+        "next": { "by": "testId", "value": "continue-button" }
+      }
+    ]
+  },
+  "review": {
+    "ready": { "by": "testId", "value": "review-submit-application" },
+    "identity": { "jobIdFromUrl": true },
+    "submit": { "by": "testId", "value": "review-submit-application" },
+    "standardVisibility": { "by": "testId", "value": "profile-visibility-field2-radio-group-standard" }
+  },
+  "missingBeforePrepare": [
+    "Stable exact account identifier selectors on auth and review screens",
+    "Unique review title, employer, résumé filename, and cover-letter filename selectors",
+    "Live automated search, upload, profile-continuation, and review verification"
+  ],
+  "missingBeforeSubmit": [
+    "Reliable same-job confirmation or read-only application-history evidence",
+    "Live prepare pass with the approved account and documents"
+  ]
+}

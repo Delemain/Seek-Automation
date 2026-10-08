@@ -26,7 +26,7 @@ export const fixtureAdapter: Adapter = {
   history: { url: '/history', ready: id('history'), entry: id('history-entry'), jobIdAttribute: 'data-job-id', reference: id('history-reference') },
 };
 export type Options = { expired?: boolean; unknownQuestion?: boolean; external?: boolean; popup?: boolean; loseConfirmation?: boolean; existingResume?: boolean; unselectedResume?: boolean; profileOnly?: boolean; radioCoverCompletion?: boolean; prefilledSearchLocation?: boolean;
-  missing?: boolean; ambiguous?: boolean; mismatch?: boolean; alreadyApplied?: boolean; uploadFailure?: boolean; pagination?: boolean; challenge?: boolean };
+  missing?: boolean; ambiguous?: boolean; mismatch?: boolean; alreadyApplied?: boolean; uploadFailure?: boolean; pagination?: boolean; challenge?: boolean; inlineDetail?: boolean; wrongApplyHref?: boolean };
 function html(body: string) { return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Local workflow fixture</title></head><body>${body}</body></html>`; }
 const account = '<div data-testid="account">test@example.invalid</div>';
 const jobIdentity = `${account}<span data-testid="job-id">94974243</span><h1 data-testid="title">QA Test Engineer</h1><div data-testid="employer">Fixture Employer</div>`;
@@ -44,9 +44,10 @@ export async function startFixture(options: Options = {}) {
     }
     if (url.pathname === '/search') {
       state.searches.push({ query: url.searchParams.get('q') ?? '', location: url.searchParams.get('location') ?? '' });
-      const target = '<article data-testid="job-card" data-job-id="94974243"><a href="/job/94974243">QA Test Engineer</a></article>';
+      const target = `<article data-testid="job-card" data-job-id="94974243"><a href="/job/94974243"${options.inlineDetail ? ' onclick="event.preventDefault();document.getElementById(\'job-panel\').hidden=false"' : ''}>QA Test Engineer</a></article>`;
       const showTarget = !options.missing && (!options.pagination || url.searchParams.has('page'));
-      res.end(html(`${account}<section data-testid="results"><article data-testid="job-card" data-job-id="99999999"><a href="/job/99999999">QA Test Engineer</a></article>${showTarget ? target + (options.ambiguous ? target : '') : ''}</section>${options.pagination && !url.searchParams.has('page') ? '<a href="/search?page=2">Next page</a>' : ''}`)); return;
+      const panel = options.inlineDetail ? `<section id="job-panel" hidden><a href="/job/${options.wrongApplyHref ? '99999999' : '94974243'}/apply" aria-label="Apply for QA Test Engineer at Fixture Employer" onclick="event.preventDefault();location.href='/apply'">Quick apply</a></section>` : '';
+      res.end(html(`${account}<section data-testid="results"><article data-testid="job-card" data-job-id="99999999"><a href="/job/99999999">QA Test Engineer</a></article>${showTarget ? target + (options.ambiguous ? target : '') : ''}</section>${panel}${options.pagination && !url.searchParams.has('page') ? '<a href="/search?page=2">Next page</a>' : ''}`)); return;
     }
     if (url.pathname.startsWith('/job/')) {
       state.selectedJobs.push(url.pathname.split('/').at(-1)!);

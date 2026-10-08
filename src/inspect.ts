@@ -51,7 +51,7 @@ const cli = new Command().name('inspect-seek')
               if (!['https://au.seek.com', 'https://www.seek.com.au'].includes(location.origin)) return false;
               return options.page === 'search'
                 ? location.pathname === '/' || location.pathname === '/jobs' || location.pathname.startsWith('/jobs/') || /-jobs(?:\/|$)/i.test(location.pathname)
-                : location.pathname === `/job/${observedJob.id}/apply`;
+                : location.pathname === `/job/${observedJob.id}/apply` || location.pathname.startsWith(`/job/${observedJob.id}/apply/`);
             }
             catch { return false; }
           }) : [];
@@ -86,7 +86,7 @@ const cli = new Command().name('inspect-seek')
           const snapshot = await captureControls(activePage);
           const file = path.join(runDirectory, `step-${String(++index).padStart(2,'0')}.json`);
           await atomicJson(file, snapshot);
-          console.log(`Saved control labels to ${file}. Review the file before sharing; labels or button text can contain account names.`);
+          console.log(`Saved control labels and structural landmarks to ${file}. Review the file before sharing; labels or button text can contain account names.`);
         } catch(e) {
           if (e instanceof WorkflowError) console.log(e.message);
           else console.log('Could not capture this page. Wait until the application step is visible, then try again.');
