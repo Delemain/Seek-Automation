@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { captureControls, safePageAddress } from '../../src/inspection.js';
+import { captureAccountMenu, captureControls, safePageAddress } from '../../src/inspection.js';
 
 test('inspection strips OAuth queries and fragments from page addresses', () => {
   expect(safePageAddress('https://au.seek.com/profile?token=secret#private')).toBe('https://au.seek.com/profile');
@@ -35,6 +35,14 @@ test('inspection records identity landmark structure without exposing email text
   expect(result.landmarks).toContainEqual(expect.objectContaining({ kind: 'accountEmail', parent: expect.objectContaining({ testId: 'profile-card' }) }));
   expect(result.landmarks).toContainEqual(expect.objectContaining({ kind: 'resume', element: expect.objectContaining({ testId: 'resume-name' }) }));
   expect(JSON.stringify(result)).not.toContain('private@example.invalid');
+});
+test('account inspection opens only the observed avatar menu before capturing', async ({ page }) => {
+  await page.setContent('<button data-automation="account name" onclick="document.getElementById(\'menu\').hidden=false">M</button><div id="menu" hidden><span>private@example.invalid</span></div>');
+  const result = await captureAccountMenu(page);
+  expect(result.landmarks.some(x => x.kind === 'accountEmail')).toBe(true);
+  expect(JSON.stringify(result)).not.toContain('private@example.invalid');
+  await page.setContent('<button>Other button</button>');
+  await expect(captureAccountMenu(page)).rejects.toMatchObject({ code: 'ACCOUNT_MENU_CONTROL_MISSING' });
 });
 test('inspector callbacks remain self-contained under the Windows tsx runtime', async () => {
   const script = `

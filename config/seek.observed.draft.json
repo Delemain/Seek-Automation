@@ -45,13 +45,19 @@
   },
   "review": {
     "ready": { "by": "testId", "value": "review-submit-application" },
-    "identity": { "jobIdFromUrl": true },
+    "identity": {
+      "jobIdFromUrl": true,
+      "title": { "by": "css", "value": "h1" },
+      "employer": { "by": "text", "value": "SustainRecruit" }
+    },
+    "resume": { "by": "testId", "value": "resume-upload" },
+    "coverLetter": { "by": "testId", "value": "cover-letter-upload" },
     "submit": { "by": "testId", "value": "review-submit-application" },
     "standardVisibility": { "by": "testId", "value": "profile-visibility-field2-radio-group-standard" }
   },
   "missingBeforePrepare": [
     "Stable exact account identifier selectors on auth and review screens",
-    "Unique review title, employer, résumé filename, and cover-letter filename selectors",
+    "Live uniqueness and exact-text checks for review title, employer, and document filename candidates",
     "Live automated search, upload, profile-continuation, and review verification"
   ],
   "missingBeforeSubmit": [

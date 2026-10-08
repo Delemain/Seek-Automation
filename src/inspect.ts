@@ -7,18 +7,18 @@ import { WorkflowError, invalid } from './errors.js';
 import { atomicJson } from './submission-ledger.js';
 import { launchOptions, validateCdpEndpoint } from './reporting.js';
 import { observedJob } from './pages/seek-public-page.js';
-import { captureControls } from './inspection.js';
+import { captureAccountMenu, captureControls } from './inspection.js';
 
 const cli = new Command().name('inspect-seek')
   .description('Open an isolated SEEK browser for operator login and manual UI inspection. This is setup, not an automated application test.')
   .option('--allow-origin <origin>', 'Additional exact HTTPS origin for an observed login redirect (repeatable)', (v, previous: string[]) => [...previous, v], [])
   .option('--output <directory>', 'Private structural snapshot directory', '.inspection')
   .option('--connect-cdp <url>', 'Use the current SEEK tab in a manually signed-in dedicated local Chrome profile')
-  .option('--page <kind>', 'Attach to the Quick apply or search tab (application|search)', 'application')
+  .option('--page <kind>', 'Attach to the Quick apply, search, or account-menu tab (application|search|account)', 'application')
   .action(async options => {
     if (!process.stdin.isTTY) throw new WorkflowError('INTERACTIVE_LOGIN_REQUIRED', 'Run npm run inspect:seek in PowerShell or a graphical terminal on your PC.', 3, 'blocked');
-    if (!['application', 'search'].includes(options.page)) invalid('--page must be application or search.');
-    if (options.page === 'search' && !options.connectCdp) invalid('--page search requires --connect-cdp.');
+    if (!['application', 'search', 'account'].includes(options.page)) invalid('--page must be application, search, or account.');
+    if (options.page !== 'application' && !options.connectCdp) invalid('--page search/account requires --connect-cdp.');
     const allowed = new Set(['https://au.seek.com','https://www.seek.com.au','https://login.seek.com']);
     for (const value of options.allowOrigin as string[]) {
       let url: URL;
@@ -49,6 +49,7 @@ const cli = new Command().name('inspect-seek')
             try {
               const location = new URL(candidate.url());
               if (!['https://au.seek.com', 'https://www.seek.com.au'].includes(location.origin)) return false;
+              if (options.page === 'account') return location.pathname === '/';
               return options.page === 'search'
                 ? location.pathname === '/' || location.pathname === '/jobs' || location.pathname.startsWith('/jobs/') || /-jobs(?:\/|$)/i.test(location.pathname)
                 : location.pathname === `/job/${observedJob.id}/apply` || location.pathname.startsWith(`/job/${observedJob.id}/apply/`);
@@ -62,18 +63,26 @@ const cli = new Command().name('inspect-seek')
       if (cdpEndpoint) {
         if (!activePage) throw new WorkflowError('INSPECTION_TAB_NOT_FOUND', options.page === 'search'
           ? 'Open one SEEK search tab in the dedicated Chrome window, then run this command again.'
-          : `Open Quick apply for job ${observedJob.id} in the dedicated Chrome window, then run this command again.`, 3, 'blocked');
-        console.log(options.page === 'search' ? 'Attached to the existing SEEK search tab.' : `Attached to the existing Quick apply tab for ${observedJob.title} at ${observedJob.employer}.`);
+          : options.page === 'account'
+            ? 'Open one signed-in SEEK homepage tab in the dedicated Chrome window, then run this command again.'
+            : `Open Quick apply for job ${observedJob.id} in the dedicated Chrome window, then run this command again.`, 3, 'blocked');
+        console.log(options.page === 'account' ? 'Attached to the signed-in SEEK homepage for account-menu inspection.'
+          : options.page === 'search' ? 'Attached to the existing SEEK search tab.'
+            : `Attached to the existing Quick apply tab for ${observedJob.title} at ${observedJob.employer}.`);
       } else {
         const inspectionPage = activePage!;
         await inspectionPage.goto(observedJob.url, { waitUntil: 'domcontentloaded' });
         console.log(`Opened ${observedJob.title} at ${observedJob.employer} (${observedJob.id}).`);
         console.log('Sign into SEEK in this browser, then open Quick apply. Do not click final Submit.');
       }
-      console.log('This helper never fills fields, uploads documents, or clicks buttons. Your manual actions can still save a draft or upload files.');
+      console.log(options.page === 'account'
+        ? 'Account mode clicks only the observed profile-avatar button, then captures structure. It never fills fields, uploads documents, or submits.'
+        : 'This helper never fills fields, uploads documents, or clicks buttons. Your manual actions can still save a draft or upload files.');
       console.log(options.page === 'search'
         ? 'Press Enter on the search form, then search manually and press Enter again on the results. Type q to close.'
-        : 'When an application step is visible, return here and press Enter to capture its field labels. Repeat for other steps; type q to close.');
+        : options.page === 'account'
+          ? 'Leave the profile menu closed. Press Enter once to open only that menu and capture it, then type q.'
+          : 'When an application step is visible, return here and press Enter to capture its field labels. Repeat for other steps; type q to close.');
       let index = 0;
       while (true) {
         const answer = await terminal.question('Enter = capture current application step; q = finish: ');
@@ -83,7 +92,7 @@ const cli = new Command().name('inspect-seek')
           console.log('Finish login and return to SEEK before capturing.'); continue;
         }
         try {
-          const snapshot = await captureControls(activePage);
+          const snapshot = options.page === 'account' ? await captureAccountMenu(activePage) : await captureControls(activePage);
           const file = path.join(runDirectory, `step-${String(++index).padStart(2,'0')}.json`);
           await atomicJson(file, snapshot);
           console.log(`Saved control labels and structural landmarks to ${file}. Review the file before sharing; labels or button text can contain account names.`);

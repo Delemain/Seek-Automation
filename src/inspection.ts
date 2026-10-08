@@ -81,3 +81,12 @@ export async function captureControls(page: Page) {
   return { capturedAt: new Date().toISOString(), page: safePageAddress(page.url()),
     scope: 'Visible control and named-landmark structure only; no field values, landmark text, cookies, storage, network bodies or screenshots.', controls, landmarks };
 }
+
+/** Opens only the observed profile-avatar menu, then captures its read-only structure. */
+export async function captureAccountMenu(page: Page) {
+  const avatar = page.locator('button[data-automation="account name"]');
+  if (await avatar.count() !== 1)
+    throw new WorkflowError('ACCOUNT_MENU_CONTROL_MISSING', 'The signed-in SEEK profile avatar was not uniquely found.', 3, 'blocked');
+  await avatar.click();
+  return captureControls(page);
+}

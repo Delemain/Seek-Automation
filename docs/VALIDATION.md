@@ -60,3 +60,7 @@ A non-runnable `config/seek.observed.draft.json` captures the observed search, i
 ## Windows inspector callback fix
 
 The new landmark callback used a named local helper inside Playwright's browser-evaluated function. The `tsx` runtime serialised that helper as an unresolved `__name` reference, so pressing Enter could print a generic capture failure and save no JSON. The callback is now self-contained. A regression test executes it through the actual `node --import tsx` path and checks that neither browser callback depends on `__name`; `npm run typecheck` and all six inspector tests passed. A separate `node --import tsx` Chromium run captured job-title, résumé and masked account-email landmarks without exposing the email. This is a local verification of the fix, not a successful Windows or SEEK capture.
+
+## Review and account-menu follow-up
+
+The operator's new review snapshot is at `/job/94974243/apply/review` and identifies exact document filename elements by `data-testid="resume-upload"` and `data-testid="cover-letter-upload"`. Title and employer text are visible, but their proposed locators are not live-uniqueness-checked. The accompanying homepage snapshot has the observed profile-avatar button but no account-email landmark, so it cannot establish account verification. An explicit `--page account` inspection mode now opens only that avatar menu and captures immediately. `npm run typecheck` and the full local Chromium suite passed **47 tests**, 0 failed, including a local browser test of the menu click. No live prepare or submit was run.
