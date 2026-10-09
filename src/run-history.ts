@@ -16,6 +16,8 @@ export type RunHistoryEntry = {
   runId: string; requestedAt: string; completedAt?: string;
   request: { command: 'batch-prepare'; searchText: string; location: string; limit: number; submissionIntervalSeconds: number }
     | { command: 'prepare-one'; jobId: string; title: string; employer: string };
+  /** Query/fragment-free SEEK results page after the search text was verified in its URL. */
+  searchUrl?: string;
   foundJobs: Array<{ jobId: string; title: string; employer: string; seekUrl: string }>;
   jobs: RunHistoryJob[];
   status: 'running' | 'completed' | 'cancelled' | 'failed'; failure?: { code: string; message: string };

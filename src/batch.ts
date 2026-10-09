@@ -20,7 +20,7 @@ export type BatchItem = BatchCandidate & {
 };
 export type BatchResult = {
   runId: string; query: string; location: string; submissionIntervalSeconds: number;
-  candidates: BatchItem[]; artifact: string; history: string;
+  searchUrl?: string; candidates: BatchItem[]; artifact: string; history: string;
 };
 export type BatchPrepareOptions = {
   submissionIntervalSeconds?: number;
@@ -41,6 +41,22 @@ export async function loadBatchAdapter(file: string): Promise<Adapter> {
 
 /** A card is skipped only when SEEK visibly marks that card as Applied. */
 export function hasExplicitAppliedMarker(text: string) { return /\bapplied\b/i.test(text); }
+
+/** SEEK normally puts the submitted search text in its results path, for example /ai-engineer-jobs. */
+export function searchUrlMatchesQuery(rawUrl: string, query: string) {
+  const normalize = (value: string) => value.normalize('NFKD').toLocaleLowerCase()
+    .replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const expected = normalize(query);
+  if (!expected) return true;
+  const url = new URL(rawUrl);
+  const candidates = [url.pathname, ...url.searchParams.values()];
+  return candidates.some(candidate => ` ${normalize(candidate)} `.includes(` ${expected} `));
+}
+
+function safeSearchUrl(rawUrl: string) {
+  const url = new URL(rawUrl);
+  return url.origin + url.pathname;
+}
 
 /** Visible card IDs are used to distinguish new search results from homepage recommendations. */
 export async function visibleResultCardIds(page: Page, adapter: Adapter): Promise<string[]> {
@@ -76,6 +92,9 @@ export async function discoverBatchCandidates(page: Page, loaded: Loaded, adapte
   const previousIds = await visibleResultCardIds(page, adapter);
   await (await unique(page, adapter.search.submit)).click();
   await waitForChangedSearchResults(page, adapter, previousIds, () => guard.checkPage(page), c.stepTimeoutMs);
+  guard.checkPage(page);
+  if (!searchUrlMatchesQuery(page.url(), c.query))
+    throw new WorkflowError('SEARCH_QUERY_UNVERIFIED', 'SEEK changed job cards but the result URL does not contain the submitted search text. No jobs were prepared.', 5, 'blocked');
   const candidates: BatchCandidate[] = [];
   for (const card of await locate(page, adapter.search.card).all()) {
     if (candidates.length === limit) break;
@@ -165,9 +184,14 @@ export async function runBatchPrepare(loaded: Loaded, batchAdapter: Adapter, cdp
     discoveryPage = await context.newPage();
     await guard.installPage(discoveryPage);
     const candidates = await discoverBatchCandidates(discoveryPage, loaded, batchAdapter, guard, 5);
+    result.searchUrl = safeSearchUrl(discoveryPage.url());
+    console.log(`Verified SEEK search: ${result.searchUrl}`);
     console.log('Found jobs without an explicit Applied marker:');
     for (const [index, candidate] of candidates.entries()) console.log(`${index + 1}. ${candidate.title} — ${candidate.employer} (${candidate.jobId})`);
-    await history.update(runId, record => { record.foundJobs = candidates.map(candidate => ({ jobId: candidate.jobId, title: candidate.title, employer: candidate.employer, seekUrl: candidate.url })); });
+    await history.update(runId, record => {
+      record.searchUrl = result.searchUrl;
+      record.foundJobs = candidates.map(candidate => ({ jobId: candidate.jobId, title: candidate.title, employer: candidate.employer, seekUrl: candidate.url }));
+    });
     if (candidates.length !== 5) throw new WorkflowError('BATCH_INSUFFICIENT_CANDIDATES', `Found ${candidates.length} eligible visible jobs; five are required before batch prepare starts.`, 4, 'blocked');
     if (!await confirm(candidates)) throw new WorkflowError('BATCH_CANCELLED', 'Batch preparation was cancelled. No documents were uploaded.', 0, 'blocked');
     for (const candidate of candidates) {
