@@ -12,6 +12,8 @@ The requested test job is `94974243`, observed as **AI Engineer at SustainRecrui
 
 The next step toward the authenticated application test is `npm run inspect:seek -- --connect-cdp http://127.0.0.1:9222` on your Windows PC, after manually signing into a separate Chrome profile and opening Quick apply. It attaches to that existing tab without requiring the unfinished adapter. Capture each application step's field structure as explained in [WINDOWS-LIVE-SETUP.md](WINDOWS-LIVE-SETUP.md). The helper does not read input values, save login state, or perform application actions automatically. Inspection output is ignored by Git; review it before sharing because labels/button captions can include account names. This setup capture is not an automated prepare or submit result.
 
+The initial authenticated Quick Apply capture is recorded in [OBSERVED-SEEK-STEP-01.md](docs/OBSERVED-SEEK-STEP-01.md). It confirms the native résumé and cover-letter upload controls, but does not yet establish their completed-upload indicators, the later questions, final review, or submission confirmation.
+
 ## Install and run local verification
 
 Use Node.js 24 LTS (22.12+ is also accepted), Windows/macOS/Linux, and Chromium:
