@@ -20,7 +20,30 @@ export async function search(page: Page, { config: c, adapter: a }: Loaded, guar
     const matches = [];
     for (const card of await cards.all()) if (await card.getAttribute(a.search.cardJobIdAttribute) === c.target.jobId) matches.push(card);
     if (matches.length > 1) throw new WorkflowError('AMBIGUOUS_TARGET', 'Multiple results have the approved job ID.', 4, 'blocked');
-    if (matches.length === 1) { await (await unique(matches[0], a.search.cardLink)).click(); return; }
+    if (matches.length === 1) {
+      const link = await unique(matches[0], a.search.cardLink);
+      const href = await link.getAttribute('href');
+      if (!href) throw new WorkflowError('TARGET_MISMATCH', 'The selected job card has no job destination.', 4, 'blocked');
+      const destination = new URL(href, page.url());
+      if (!c.allowedOrigins.includes(destination.origin) || destination.pathname !== `/job/${encodeURIComponent(c.target.jobId)}`)
+        throw new WorkflowError('TARGET_MISMATCH', 'The selected job card does not link to the approved job.', 4, 'blocked');
+      await link.click();
+      try {
+        // SEEK can either reveal the job in the results view or navigate to its
+        // detail page. Give either observed result a chance before the fallback.
+        await expect.poll(async () => {
+          guard.check();
+          return new URL(page.url()).pathname === destination.pathname || await visible(page, a.job.ready);
+        }, { timeout: Math.min(c.stepTimeoutMs, 3000) }).toBe(true);
+      } catch {
+        guard.check();
+        // The exact result was selected, but its client-side activation did not
+        // complete. Follow only the already verified exact job destination.
+        await page.goto(destination.href, { waitUntil: 'domcontentloaded' });
+        guard.checkPage(page);
+      }
+      return;
+    }
     if (n + 1 === c.maxSearchPages || !await visible(page, a.search.next)) break;
     const next = await unique(page, a.search.next!);
     if (await next.isDisabled()) break;

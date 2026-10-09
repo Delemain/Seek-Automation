@@ -51,6 +51,12 @@ test('third-party measurement frame does not count as an external application fl
     expect(result.status, result.message).toBe('prepared');
   });
 });
+test('follows the exact selected job link only when its client-side activation does not complete', async () => {
+  await scenario({ inlineDetail: true }, async loaded => {
+    const result = await run(loaded);
+    expect(result.status, result.message).toBe('prepared');
+  });
+});
 for (const wrongApplyHref of [false, true]) test(`in-place SEEK job panel ${wrongApplyHref ? 'rejects a wrong Apply destination' : 'verifies exact Apply href and accessible identity'}`, async () => {
   const server = await startFixture({ inlineDetail: true, wrongApplyHref });
   const files = await fixtureConfig(server.origin);
