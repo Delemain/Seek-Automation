@@ -28,16 +28,16 @@ for (const command of ['validate', 'auth', 'apply', 'reconcile'] as const) {
       process.exitCode = result.exitCode;
     });
 }
-cli.command('batch-prepare')
-  .description('Find five visible SEEK jobs without an explicit Applied marker, ask for terminal confirmation, then prepare each without submitting.')
+cli.command('batch-prepare [search]')
+  .description('Search for the supplied text, find five visible SEEK jobs without an explicit Applied marker, ask for terminal confirmation, then prepare each without submitting.')
   .requiredOption('-c, --config <path>', 'Configuration JSON file')
   .requiredOption('--connect-cdp <url>', 'Attach to a manually signed-in dedicated local Chrome profile')
   .option('--query <keywords>', 'Override search keywords')
   .option('--location <location>', 'Override search location')
   .option('--batch-adapter <path>', 'Observed batch adapter', 'config/seek.batch.prepare.candidate.json')
-  .action(async options => {
+  .action(async (search, options) => {
     validateCdpEndpoint(options.connectCdp);
-    const loaded = await loadConfig(options.config, { query: options.query, location: options.location, mode: 'prepare' });
+    const loaded = await loadConfig(options.config, { query: search ?? options.query, location: options.location, mode: 'prepare' });
     const adapter = await loadBatchAdapter(path.resolve(options.batchAdapter));
     const result = await runBatchPrepare(loaded, adapter, options.connectCdp);
     console.log(`Batch result: ${result.artifact}`);

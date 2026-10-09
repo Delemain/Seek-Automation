@@ -88,10 +88,10 @@ This is the first live automated check, not a verified path yet. It checks the c
 With the dedicated signed-in Chrome profile still open, run:
 
 ```powershell
-npm run batch:prepare -- --config config/local.json --connect-cdp http://127.0.0.1:9222 --query "AI Engineer" --location ""
+npm run batch:prepare -- "AI Engineer" --config config/local.json --connect-cdp http://127.0.0.1:9222 --location ""
 ```
 
-The command uses `config/seek.batch.prepare.candidate.json` by default. A job is marked ready only after its Apply control reaches the observed **SEEK Quick Apply** form on an allowed SEEK origin, with the exact job ID and configured account verified before upload. An external form, a same-origin non-Quick-Apply flow, an account mismatch, an explicit Applied marker, changed controls, or additional required questions is skipped; it is not submitted or retried. Preparing a job can still upload the cover letter and create/update a draft. Its private batch result is saved under `artifacts/batch-<run-id>/batch-result.json` without tracking query strings or fragments.
+The quoted positional value is the exact text entered into the SEEK search bar. If it is omitted, the command uses the configured query; `--query` remains available for scripts. The command uses `config/seek.batch.prepare.candidate.json` by default. A job is marked ready only after its Apply control reaches the observed **SEEK Quick Apply** form on an allowed SEEK origin, with the exact job ID and configured account verified before upload. An external form, a same-origin non-Quick-Apply flow, an account mismatch, an explicit Applied marker, changed controls, or additional required questions is skipped; it is not submitted or retried. Preparing a job can still upload the cover letter and create/update a draft. Its private batch result is saved under `artifacts/batch-<run-id>/batch-result.json` without tracking query strings or fragments.
 
 Only after observed confirmation and history mappings are implemented and tested can a separate verified adapter explicitly enable a single submission. The supplied candidate refuses this command at preflight:
 
