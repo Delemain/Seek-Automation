@@ -51,7 +51,7 @@ export async function discoverBatchCandidates(page: Page, loaded: Loaded, adapte
     if (!c.allowedOrigins.includes(url.origin) || url.pathname !== `/job/${encodeURIComponent(jobId)}`) continue;
     const title = (await (await unique(card, adapter.search.cardTitle!)).innerText()).trim();
     const employer = (await (await unique(card, adapter.search.cardEmployer!)).innerText()).trim();
-    if (title && employer) candidates.push({ jobId, title, employer, url: url.href });
+    if (title && employer) candidates.push({ jobId, title, employer, url: url.origin + url.pathname });
   }
   return candidates;
 }

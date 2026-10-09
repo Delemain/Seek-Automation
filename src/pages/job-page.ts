@@ -20,16 +20,22 @@ export async function startApplication(page: Page, { config: c, adapter: a }: Lo
   try {
     await (await unique(page, a.job.apply)).click();
     let application: Page | undefined;
-    await expect.poll(async () => {
+    try {
+      await expect.poll(async () => {
+        guard.check();
+        for (const candidate of candidates) {
+          if (candidate.isClosed()) continue;
+          if (await visible(candidate, a.auth.loginRequired) || await visible(candidate, a.auth.challenge))
+            throw new WorkflowError('AUTH_REQUIRED', 'Authentication or verification is required.', 3, 'blocked');
+          if (await visible(candidate, a.application.ready)) { application = candidate; return true; }
+        }
+        return false;
+      }, { timeout: c.stepTimeoutMs }).toBe(true);
+    } catch (error) {
+      if (error instanceof WorkflowError) throw error;
       guard.check();
-      for (const candidate of candidates) {
-        if (candidate.isClosed()) continue;
-        if (await visible(candidate, a.auth.loginRequired) || await visible(candidate, a.auth.challenge))
-          throw new WorkflowError('AUTH_REQUIRED', 'Authentication or verification is required.', 3, 'blocked');
-        if (await visible(candidate, a.application.ready)) { application = candidate; return true; }
-      }
-      return false;
-    }, { timeout: c.stepTimeoutMs }).toBe(true);
+      throw new WorkflowError('NOT_QUICK_APPLY', 'The job did not reach the observed SEEK Quick Apply form. It was stopped before any document upload.', 5, 'blocked');
+    }
     guard.checkPage(application!);
     if (a.application.jobIdFromUrl) jobIdFromSeekPath(application!, c.target.jobId);
     else await expect(await unique(application!, a.application.jobId!)).toHaveText(c.target.jobId);
