@@ -3,7 +3,7 @@ import type { Loaded, Config, DocumentInfo, Adapter } from '../config.js';
 import { documentInfo } from '../config.js';
 import { WorkflowError } from '../errors.js';
 import { assertions, identity, locate, unique, visible, exact, type NavigationGuard } from './ui.js';
-import { completeAutomaticQuestions, waitForReviewOrQuestions } from './automatic-questions.js';
+import { completeAutomaticQuestions, waitForDestinationOrQuestions } from './automatic-questions.js';
 
 async function upload(page: Page, spec: NonNullable<Adapter['application']['steps'][number]['uploads']>['coverLetter'], doc: DocumentInfo, c: Config) {
   const expect = assertions(page);
@@ -42,7 +42,7 @@ export async function completeApplication(page: Page, loaded: Loaded, guard: Nav
   const { config: c, adapter: a, documents: docs } = loaded;
   const used = new Set<string>();
   const filled = new Set<string>();
-  for (const step of a.application.steps) {
+  for (const [index, step] of a.application.steps.entries()) {
     guard.checkPage(page);
     await expect(locate(page, step.ready)).toBeVisible();
     if (step.uploads) {
@@ -93,15 +93,19 @@ export async function completeApplication(page: Page, loaded: Loaded, guard: Nav
     guard.check();
     await (await unique(page, step.next)).click();
     if (await visible(page, step.validationErrors)) throw new WorkflowError('FORM_VALIDATION', 'Form rejected configured inputs.');
+    if (autoQuestions) {
+      const destination = a.application.steps[index + 1]?.ready ?? a.review.ready;
+      // The document step reuses the same Continue selector on later pages, so
+      // use its file input as the outgoing-step marker instead.
+      const outgoing = step.uploads ? step.uploads.coverLetter.input : step.ready;
+      const stage = await waitForDestinationOrQuestions(page, destination, step.next,
+        () => guard.checkPage(page), c.stepTimeoutMs, outgoing, undefined, Boolean(step.uploads));
+      if (stage === 'questions') await completeAutomaticQuestions(page, destination, step.next,
+        () => guard.checkPage(page), 8, c.stepTimeoutMs);
+    }
   }
   if (used.size !== c.answers.length) throw new WorkflowError('QUESTION_NOT_FOUND', 'Not all configured screening questions were encountered.', 5, 'blocked');
   if (filled.size !== Object.keys(c.applicant ?? {}).length) throw new WorkflowError('APPLICANT_FIELDS_MISSING', 'Adapter did not fill every configured applicant field.', 5, 'blocked');
-  if (autoQuestions) {
-    const lastStep = a.application.steps.at(-1)!;
-    const destination = await waitForReviewOrQuestions(page, a.review.ready, lastStep.next,
-      () => guard.checkPage(page), c.stepTimeoutMs, lastStep.ready);
-    if (destination === 'questions') await completeAutomaticQuestions(page, a.review.ready, lastStep.next, () => guard.checkPage(page), 8, c.stepTimeoutMs);
-  }
   await assertReview(page, loaded, guard);
 }
 export function answerText(value: string | boolean | string[]) { return Array.isArray(value) ? value.join(', ') : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : value; }

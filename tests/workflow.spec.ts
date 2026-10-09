@@ -35,8 +35,8 @@ test('prepare searches exact ID, uploads both new files despite reversed inputs,
     expect((await readFile(result.artifacts.result, 'utf8'))).not.toContain('test@example.invalid');
   });
 });
-test('prepare-one opens only the approved job and reaches review without employer questions', async () => {
-  const server = await startFixture({ existingResume: true, profileOnly: true, radioCoverCompletion: true });
+for (const questionsBeforeProfile of [false, true]) test(`prepare-one reaches review ${questionsBeforeProfile ? 'with questions before' : 'without questions before'} SEEK Profile`, async () => {
+  const server = await startFixture({ existingResume: true, profileOnly: true, radioCoverCompletion: true, questionsBeforeProfile });
   const files = await fixtureConfig(server.origin);
   try {
     const config = JSON.parse(await readFile(files.file, 'utf8'));
@@ -58,6 +58,7 @@ test('prepare-one opens only the approved job and reaches review without employe
     expect(result.status, result.message).toBe('prepared');
     expect(server.state.searches).toHaveLength(0);
     expect(server.state.selectedJobs).toEqual(['94974243']);
+    expect(server.state.screeningAnswers).toEqual(questionsBeforeProfile ? [{ experience: 'first', licence: 'first', skills: ['first'], details: 'N/A' }] : []);
     expect(server.state.submissions).toBe(0);
   } finally { await server.close(); await rm(files.dir, { recursive: true, force: true }); }
 });

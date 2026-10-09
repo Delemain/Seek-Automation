@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { completeAutomaticQuestions, waitForReviewOrQuestions } from '../../src/pages/automatic-questions.js';
+import { completeAutomaticQuestions, waitForDestinationOrQuestions } from '../../src/pages/automatic-questions.js';
 
 const review = { by: 'testId' as const, value: 'review-submit-application' };
 const next = { by: 'testId' as const, value: 'continue-button' };
@@ -11,7 +11,7 @@ test('a delayed no-questions review is not mistaken for screening', async ({ pag
   await page.evaluate(() => setTimeout(() => {
     document.querySelector('main')!.innerHTML = '<button data-testid="review-submit-application">Submit application</button>';
   }, 350));
-  expect(await waitForReviewOrQuestions(page, review, next, () => {}, 2000, { by: 'testId', value: 'add-skills' })).toBe('review');
+  expect(await waitForDestinationOrQuestions(page, review, next, () => {}, 2000, { by: 'testId', value: 'add-skills' })).toBe('destination');
   await expect(page.getByTestId('review-submit-application')).toBeVisible();
 });
 
@@ -22,7 +22,7 @@ test('screening starts only after the profile marker disappears', async ({ page 
   await page.evaluate(() => setTimeout(() => {
     document.querySelector('main')!.innerHTML = '<label>Question<input type="text" id="question"></label><button data-testid="continue-button">Continue</button>';
   }, 350));
-  expect(await waitForReviewOrQuestions(page, review, next, () => {}, 2000, { by: 'testId', value: 'add-skills' })).toBe('questions');
+  expect(await waitForDestinationOrQuestions(page, review, next, () => {}, 2000, { by: 'testId', value: 'add-skills' })).toBe('questions');
   await expect(page.locator('#question')).toBeVisible();
 });
 

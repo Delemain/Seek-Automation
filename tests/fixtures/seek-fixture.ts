@@ -26,13 +26,13 @@ export const fixtureAdapter: Adapter = {
   history: { url: '/history', ready: id('history'), entry: id('history-entry'), jobIdAttribute: 'data-job-id', reference: id('history-reference') },
 };
 export type Options = { expired?: boolean; unknownQuestion?: boolean; external?: boolean; popup?: boolean; loseConfirmation?: boolean; existingResume?: boolean; unselectedResume?: boolean; profileOnly?: boolean; radioCoverCompletion?: boolean; prefilledSearchLocation?: boolean; thirdPartyFrame?: boolean;
-  missing?: boolean; ambiguous?: boolean; mismatch?: boolean; alreadyApplied?: boolean; uploadFailure?: boolean; pagination?: boolean; challenge?: boolean; inlineDetail?: boolean; wrongApplyHref?: boolean; wrongAccountOnApplication?: boolean; wrongAccountOnReview?: boolean };
+  missing?: boolean; ambiguous?: boolean; mismatch?: boolean; alreadyApplied?: boolean; uploadFailure?: boolean; pagination?: boolean; challenge?: boolean; inlineDetail?: boolean; wrongApplyHref?: boolean; wrongAccountOnApplication?: boolean; wrongAccountOnReview?: boolean; questionsBeforeProfile?: boolean };
 function html(body: string) { return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Local workflow fixture</title></head><body>${body}</body></html>`; }
 const account = '<div data-testid="account">test@example.invalid</div>';
 const jobIdentity = `${account}<span data-testid="job-id">94974243</span><h1 data-testid="title">QA Test Engineer</h1><div data-testid="employer">Fixture Employer</div>`;
 
 export async function startFixture(options: Options = {}) {
-  const state = { submissions: 0, uploads: [] as { filename: string; body: string }[], searches: [] as { query: string; location: string }[], selectedJobs: [] as string[] };
+  const state = { submissions: 0, uploads: [] as { filename: string; body: string }[], searches: [] as { query: string; location: string }[], selectedJobs: [] as string[], screeningAnswers: [] as Record<string, string | string[]>[] };
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url!, 'http://localhost');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -79,8 +79,17 @@ export async function startFixture(options: Options = {}) {
           }
           if (++count===${options.existingResume ? 1 : 2}) document.getElementById('continue').disabled=false;
         };
-        document.getElementById('continue').onclick=()=>location.href='/questions';
+        document.getElementById('continue').onclick=()=>location.href='${options.questionsBeforeProfile ? '/screening' : '/questions'}';
       </script>`)); return;
+    }
+    if (url.pathname === '/screening' && options.questionsBeforeProfile) {
+      res.end(html(`${jobIdentity}<main><form action="/questions">
+        <label>Experience<select name="experience" required><option value="">Choose</option><option value="first">First</option><option value="second">Second</option></select></label>
+        <fieldset><legend>Licence</legend><label><input type="radio" name="licence" value="first" required>First</label><label><input type="radio" name="licence" value="second">Second</label></fieldset>
+        <fieldset><legend>Skills</legend><label><input type="checkbox" name="skills" value="first">First</label><label><input type="checkbox" name="skills" value="second">Second</label></fieldset>
+        <label>Details<textarea name="details"></textarea></label>
+        <button>Continue →</button>
+      </form></main>`)); return;
     }
     if (url.pathname === '/upload') {
       const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(Buffer.from(chunk));
@@ -89,6 +98,7 @@ export async function startFixture(options: Options = {}) {
       setTimeout(() => { res.statusCode = options.uploadFailure ? 400 : 200; res.end('upload processed'); }, 120); return;
     }
     if (url.pathname === '/questions') {
+      if (options.questionsBeforeProfile) state.screeningAnswers.push({ experience: url.searchParams.get('experience') ?? '', licence: url.searchParams.get('licence') ?? '', skills: url.searchParams.getAll('skills'), details: url.searchParams.get('details') ?? '' });
       if (options.profileOnly) {
         res.end(html(`${jobIdentity}<section data-testid="profile"><h2>SEEK Profile</h2><button onclick="location.href='/review'">Continue</button></section>`)); return;
       }

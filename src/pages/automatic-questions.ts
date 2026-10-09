@@ -47,25 +47,28 @@ async function questionSignature(root: Locator) {
 
 async function continueButton(page: Page, next: LocatorSpec) {
   let control = locate(page, next);
-  if (await control.count() === 0) control = page.getByRole('button', { name: /^(continue|next)$/i });
+  if (await control.count() === 0) control = page.getByRole('button', { name: /^(continue|next)(?:\s|$)/i });
   return control;
 }
 
-/** Do not treat the outgoing SEEK Profile page as a screening page while its transition is pending. */
-export async function waitForReviewOrQuestions(page: Page, review: LocatorSpec, next: LocatorSpec,
-  check: () => void, timeoutMs: number, previousStep?: LocatorSpec, previousSignature?: string) {
+/** Wait until either the next known step appears or a distinct screening page is ready. */
+export async function waitForDestinationOrQuestions(page: Page, destination: LocatorSpec, next: LocatorSpec,
+  check: () => void, timeoutMs: number, previousStep?: LocatorSpec, previousSignature?: string, requirePreviousAbsent = false) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     check();
-    if (await visible(page, review)) return 'review' as const;
-    if ((!previousStep || !await visible(page, previousStep)) && await page.locator('main').count() === 1) {
+    if (await visible(page, destination)) return 'destination' as const;
+    const previousGone = !previousStep || (requirePreviousAbsent
+      ? await locate(page, previousStep).count() === 0
+      : !await visible(page, previousStep));
+    if (previousGone && await page.locator('main').count() === 1) {
       const current = await questionSignature(page.locator('main'));
       const button = await continueButton(page, next);
       if (current && current !== previousSignature && await button.count() === 1 && await button.isVisible()) return 'questions' as const;
     }
     await page.waitForTimeout(100);
   }
-  throw new WorkflowError('APPLICATION_STEP_UNKNOWN', 'Continue did not reach a verified review or screening page before the step timeout.', 5, 'blocked');
+  throw new WorkflowError('APPLICATION_STEP_UNKNOWN', 'Continue did not reach the next verified application step or a screening page before the step timeout.', 5, 'blocked');
 }
 
 async function fillInitial(root: Locator, page: Page) {
@@ -152,15 +155,15 @@ async function addOneChoice(root: Locator) {
   return false;
 }
 
-/** Batch-only handling for ordinary question pages after the unchanged SEEK Profile step. */
-export async function completeAutomaticQuestions(page: Page, review: LocatorSpec, next: LocatorSpec, check: () => void, maxPages = 8, stepTimeoutMs = 15000) {
+/** Prepare-only screening handler. Stops at the next known step; never clicks Submit. */
+export async function completeAutomaticQuestions(page: Page, destination: LocatorSpec, next: LocatorSpec, check: () => void, maxPages = 8, stepTimeoutMs = 15000) {
   let priorSignature: string | undefined;
   for (let pageNumber = 0; pageNumber < maxPages; pageNumber++) {
     check();
-    if (await visible(page, review)) return;
+    if (await visible(page, destination)) return;
     if (priorSignature) {
-      const destination = await waitForReviewOrQuestions(page, review, next, check, stepTimeoutMs, undefined, priorSignature);
-      if (destination === 'review') return;
+      const stage = await waitForDestinationOrQuestions(page, destination, next, check, stepTimeoutMs, undefined, priorSignature);
+      if (stage === 'destination') return;
     }
     if (await page.locator('main').count() !== 1) throw unsupported();
     const rootSelector = 'main';
@@ -177,18 +180,18 @@ export async function completeAutomaticQuestions(page: Page, review: LocatorSpec
       const beforeSignature = await questionSignature(root);
       await continueControl.click({ noWaitAfter: true });
       try {
-        await page.waitForFunction(({ previous, url, reviewSelector, rootSelector }) => {
-          const review = document.querySelector(reviewSelector);
-          if (review && review.getBoundingClientRect().width > 0) return true;
+        await page.waitForFunction(({ previous, url, destinationSelector, rootSelector }) => {
+          const target = document.querySelector(destinationSelector);
+          if (target && target.getBoundingClientRect().width > 0) return true;
           if (location.href !== url) return true;
           const current = Array.from(document.querySelectorAll(`${rootSelector} input, ${rootSelector} textarea, ${rootSelector} select, ${rootSelector} [role="combobox"], ${rootSelector} [role="radio"], ${rootSelector} [role="checkbox"]`))
             .filter(element => { const box = element.getBoundingClientRect(); return box.width > 0 && box.height > 0; })
             .map(element => `${element.tagName}:${element.getAttribute('name')}:${element.getAttribute('id')}:${element.getAttribute('aria-label')}:${element.closest('label')?.textContent?.trim() ?? ''}`).join('|');
           return current !== previous;
-        }, { previous: beforeSignature, url: beforeUrl, rootSelector, reviewSelector: review.by === 'testId' ? `[data-testid="${review.value}"]` : '___no_review___' }, { timeout: 1200 });
+        }, { previous: beforeSignature, url: beforeUrl, rootSelector, destinationSelector: destination.by === 'testId' ? `[data-testid="${destination.value}"]` : '___no_destination___' }, { timeout: 1200 });
       } catch { /* The page did not advance; add one more answer below. */ }
       check();
-      if (await visible(page, review)) return;
+      if (await visible(page, destination)) return;
       if (page.url() !== beforeUrl || normalize(await questionSignature(root)) !== normalize(beforeSignature)) { priorSignature = beforeSignature; advanced = true; break; }
       if (!await addOneChoice(root)) throw new WorkflowError('SCREENING_VALIDATION', 'The screening page did not advance after all supported answer choices were tried.', 5, 'blocked');
     }
