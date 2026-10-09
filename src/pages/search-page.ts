@@ -27,7 +27,10 @@ export async function search(page: Page, { config: c, adapter: a }: Loaded, guar
       const destination = new URL(href, page.url());
       if (!c.allowedOrigins.includes(destination.origin) || destination.pathname !== `/job/${encodeURIComponent(c.target.jobId)}`)
         throw new WorkflowError('TARGET_MISMATCH', 'The selected job card does not link to the approved job.', 4, 'blocked');
-      await link.click();
+      // SEEK may begin a navigation that never reaches Playwright's normal
+      // load-complete condition. The selected link has already been verified;
+      // do not let that optional navigation wait prevent the guarded fallback.
+      await link.click({ noWaitAfter: true });
       try {
         // SEEK can either reveal the job in the results view or navigate to its
         // detail page. Give either observed result a chance before the fallback.
