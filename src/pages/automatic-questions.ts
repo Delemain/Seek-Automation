@@ -45,6 +45,13 @@ async function questionSignature(root: Locator) {
     .join('|'));
 }
 
+async function questionRoot(page: Page) {
+  if (await page.locator('main').count() === 1) return { selector: 'main', locator: page.locator('main') };
+  const forms = page.locator('form');
+  if (await forms.count() === 1 && await forms.isVisible()) return { selector: 'form', locator: forms };
+  return { selector: 'body', locator: page.locator('body') };
+}
+
 async function continueButton(page: Page, next: LocatorSpec) {
   let control = locate(page, next);
   if (await control.count() === 0) control = page.getByRole('button', { name: /^(continue|next)(?:\s|$)/i });
@@ -53,22 +60,23 @@ async function continueButton(page: Page, next: LocatorSpec) {
 
 /** Wait until either the next known step appears or a distinct screening page is ready. */
 export async function waitForDestinationOrQuestions(page: Page, destination: LocatorSpec, next: LocatorSpec,
-  check: () => void, timeoutMs: number, previousStep?: LocatorSpec, previousSignature?: string, requirePreviousAbsent = false) {
+  check: () => void, timeoutMs: number, previousStep?: LocatorSpec, previousSignature?: string) {
   const deadline = Date.now() + timeoutMs;
+  let lastState = 'page not ready';
   while (Date.now() < deadline) {
     check();
     if (await visible(page, destination)) return 'destination' as const;
-    const previousGone = !previousStep || (requirePreviousAbsent
-      ? await locate(page, previousStep).count() === 0
-      : !await visible(page, previousStep));
-    if (previousGone && await page.locator('main').count() === 1) {
-      const current = await questionSignature(page.locator('main'));
-      const button = await continueButton(page, next);
-      if (current && current !== previousSignature && await button.count() === 1 && await button.isVisible()) return 'questions' as const;
-    }
+    const previousGone = !previousStep || !await visible(page, previousStep);
+    const root = await questionRoot(page);
+    const current = await questionSignature(root.locator);
+    const button = await continueButton(page, next);
+    const continueCount = await button.count();
+    const continueVisible = continueCount === 1 && await button.isVisible();
+    if (previousGone && current && current !== previousSignature && continueVisible) return 'questions' as const;
+    lastState = `outgoing marker ${previousGone ? 'gone' : 'present'}, visible controls ${current ? 'found' : 'missing'}, Continue ${continueVisible ? 'found' : 'missing'}, scope ${root.selector}`;
     await page.waitForTimeout(100);
   }
-  throw new WorkflowError('APPLICATION_STEP_UNKNOWN', 'Continue did not reach the next verified application step or a screening page before the step timeout.', 5, 'blocked');
+  throw new WorkflowError('APPLICATION_STEP_UNKNOWN', `Continue did not reach the next verified application step or a screening page before the step timeout (${lastState}).`, 5, 'blocked');
 }
 
 async function fillInitial(root: Locator, page: Page) {
@@ -165,9 +173,7 @@ export async function completeAutomaticQuestions(page: Page, destination: Locato
       const stage = await waitForDestinationOrQuestions(page, destination, next, check, stepTimeoutMs, undefined, priorSignature);
       if (stage === 'destination') return;
     }
-    if (await page.locator('main').count() !== 1) throw unsupported();
-    const rootSelector = 'main';
-    const root = page.locator(rootSelector);
+    const { selector: rootSelector, locator: root } = await questionRoot(page);
     const continueControl = await continueButton(page, next);
     if (await continueControl.count() !== 1 || !await continueControl.isVisible()) throw unsupported();
     const signature = await questionSignature(root);

@@ -7,6 +7,7 @@ import { WorkflowError, type TerminalStatus } from './errors.js';
 import { Ledger, atomicJson, accountReference } from './submission-ledger.js';
 import { configureContext, NavigationGuard, visible } from './pages/ui.js';
 import { applyFlow, reconcileFlow, type Step, type FlowState, type ApplyOptions } from './flows/apply.js';
+import { captureControls } from './inspection.js';
 
 export type BrowserConnection = { cdpEndpoint?: string } & ApplyOptions;
 export function validateCdpEndpoint(value: string): string {
@@ -22,7 +23,7 @@ export type Result = {
   mode: string; query: string; location: string; target: Loaded['config']['target']; accountReference: string;
   documents: { resume: Omit<DocumentInfo, 'path'> | ExistingResumeInfo; coverLetter: Omit<DocumentInfo, 'path'> };
   phase: string; status: TerminalStatus; code: string; message: string; exitCode: number; confirmation?: string;
-  artifacts: { result: string; screenshot?: string; trace?: string };
+  artifacts: { result: string; screenshot?: string; trace?: string; controls?: string };
 };
 export function launchOptions(headed: boolean) {
   return { headless: !headed, executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH || undefined, timeout: 30000 };
@@ -47,6 +48,10 @@ export async function runWorkflow(loaded: Loaded, operation: 'apply' | 'reconcil
   const captureEvidence = () => evidenceCapture ??= (async () => {
     const screenshot = path.join(directory, 'evidence.png');
     if (state && !state.page.isClosed()) await state.page.screenshot({ path: screenshot, fullPage: true, timeout: 2000 }).then(async () => { await chmod(screenshot, 0o600); result.artifacts.screenshot = screenshot; }).catch(() => {});
+    if (result.exitCode !== 0 && state && !state.page.isClosed()) {
+      const controls = path.join(directory, 'controls.json');
+      await captureControls(state.page).then(snapshot => atomicJson(controls, snapshot)).then(() => { result.artifacts.controls = controls; }).catch(() => {});
+    }
     if (!cdpEndpoint) {
       const trace = path.join(directory, 'trace.zip');
       await context?.tracing.stop({ path: trace }).then(async () => { await chmod(trace, 0o600); result.artifacts.trace = trace; }).catch(() => {});

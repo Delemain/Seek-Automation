@@ -95,11 +95,14 @@ export async function completeApplication(page: Page, loaded: Loaded, guard: Nav
     if (await visible(page, step.validationErrors)) throw new WorkflowError('FORM_VALIDATION', 'Form rejected configured inputs.');
     if (autoQuestions) {
       const destination = a.application.steps[index + 1]?.ready ?? a.review.ready;
-      // The document step reuses the same Continue selector on later pages, so
-      // use its file input as the outgoing-step marker instead.
-      const outgoing = step.uploads ? step.uploads.coverLetter.input : step.ready;
+      // The document step reuses the same Continue selector on later pages. Its
+      // visible selected-document radio is a better outgoing marker than the
+      // hidden file input, which SEEK may keep mounted on subsequent pages.
+      const outgoing = step.uploads
+        ? step.uploads.existingResume?.option ?? step.uploads.coverLetter.selectedRadio ?? step.uploads.coverLetter.input
+        : step.ready;
       const stage = await waitForDestinationOrQuestions(page, destination, step.next,
-        () => guard.checkPage(page), c.stepTimeoutMs, outgoing, undefined, Boolean(step.uploads));
+        () => guard.checkPage(page), c.stepTimeoutMs, outgoing);
       if (stage === 'questions') await completeAutomaticQuestions(page, destination, step.next,
         () => guard.checkPage(page), 8, c.stepTimeoutMs);
     }

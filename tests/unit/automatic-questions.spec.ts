@@ -26,6 +26,15 @@ test('screening starts only after the profile marker disappears', async ({ page 
   await expect(page.locator('#question')).toBeVisible();
 });
 
+test('question controls outside main and form can still reach the next known step', async ({ page }) => {
+  await page.setContent(`<div><label>Experience<select id="experience"><option value="">Choose</option><option value="first">First</option></select></label>
+    <button data-testid="continue-button" onclick="document.body.innerHTML='<div data-testid=&quot;add-skills&quot;>SEEK Profile</div>'">Continue</button></div>`);
+  const profile = { by: 'testId' as const, value: 'add-skills' };
+  expect(await waitForDestinationOrQuestions(page, profile, next, () => {}, 1000)).toBe('questions');
+  await completeAutomaticQuestions(page, profile, next, () => {});
+  await expect(page.getByTestId('add-skills')).toBeVisible();
+});
+
 test('batch questions use deterministic answers and stop before Submit', async ({ page }) => {
   await page.setContent(`
     <main>

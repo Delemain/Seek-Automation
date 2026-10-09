@@ -233,6 +233,8 @@ test('upload processing failure cannot advance to review', async () => {
     expect(result.phase).toBe('form');
     expect(server.state.submissions).toBe(0);
     expect(result.artifacts.trace).toBeTruthy();
+    expect(result.artifacts.controls).toBeTruthy();
+    expect(JSON.parse(await readFile(result.artifacts.controls!, 'utf8')).controls).toBeInstanceOf(Array);
   });
 });
 test('run deadline interrupts a stuck upload and retains the first-failure trace', async () => {

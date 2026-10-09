@@ -83,13 +83,13 @@ export async function startFixture(options: Options = {}) {
       </script>`)); return;
     }
     if (url.pathname === '/screening' && options.questionsBeforeProfile) {
-      res.end(html(`${jobIdentity}<main><form action="/questions">
+      res.end(html(`${jobIdentity}<input type="file" id="cover" style="display:none"><form action="/questions">
         <label>Experience<select name="experience" required><option value="">Choose</option><option value="first">First</option><option value="second">Second</option></select></label>
         <fieldset><legend>Licence</legend><label><input type="radio" name="licence" value="first" required>First</label><label><input type="radio" name="licence" value="second">Second</label></fieldset>
         <fieldset><legend>Skills</legend><label><input type="checkbox" name="skills" value="first">First</label><label><input type="checkbox" name="skills" value="second">Second</label></fieldset>
         <label>Details<textarea name="details"></textarea></label>
         <button>Continue →</button>
-      </form></main>`)); return;
+      </form>`)); return;
     }
     if (url.pathname === '/upload') {
       const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(Buffer.from(chunk));

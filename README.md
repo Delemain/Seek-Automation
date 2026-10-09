@@ -91,7 +91,7 @@ For a focused one-job test, use `prepare-one`. It opens only the exact SEEK job 
 npm run prepare:one -- 95100986 --title "Senior Finance Business Partner" --employer "Dean & Ling Executive" --config config/local.json --connect-cdp http://127.0.0.1:9222
 ```
 
-The command uses the generic observed Quick Apply adapter by default, regardless of the original test-job adapter in `config/local.json`. It requires the existing résumé and cover-letter settings there, with no preconfigured `answers` or `applicant` fields. A private `artifacts/<run-id>/result.json` and screenshot show the outcome; the screenshot can contain personal information, so review it before sharing. A different job needs its own exact ID, title, and employer. Local fixture tests cover both the no-questions transition and deterministic question controls, but this command still needs a supervised live run before claiming it works on that SEEK job.
+The command uses the generic observed Quick Apply adapter by default, regardless of the original test-job adapter in `config/local.json`. It requires the existing résumé and cover-letter settings there, with no preconfigured `answers` or `applicant` fields. A private `artifacts/<run-id>/result.json` and screenshot show the outcome; failed runs also save `controls.json` with control structure and labels but no entered values. Review either artifact for personal information before sharing. A different job needs its own exact ID, title, and employer. Local fixture tests cover both the no-questions transition and deterministic question controls, but this command still needs a supervised live run before claiming it works on that SEEK job.
 
 With the dedicated signed-in Chrome profile still open, run:
 
