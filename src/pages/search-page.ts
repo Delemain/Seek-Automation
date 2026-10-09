@@ -39,7 +39,10 @@ export async function search(page: Page, { config: c, adapter: a }: Loaded, guar
         guard.check();
         // The exact result was selected, but its client-side activation did not
         // complete. Follow only the already verified exact job destination.
-        await page.goto(destination.href, { waitUntil: 'domcontentloaded' });
+        // The live detail page can keep its DOM readiness pending behind optional
+        // third-party content. Commit proves the browser reached the verified URL;
+        // startApplication then waits for the observed Apply control itself.
+        await page.goto(destination.href, { waitUntil: 'commit' });
         guard.checkPage(page);
       }
       return;
