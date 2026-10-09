@@ -3,7 +3,7 @@ import type { Loaded, Config, DocumentInfo, Adapter } from '../config.js';
 import { documentInfo } from '../config.js';
 import { WorkflowError } from '../errors.js';
 import { assertions, identity, locate, unique, visible, exact, type NavigationGuard } from './ui.js';
-import { completeAutomaticQuestions } from './automatic-questions.js';
+import { completeAutomaticQuestions, waitForReviewOrQuestions } from './automatic-questions.js';
 
 async function upload(page: Page, spec: NonNullable<Adapter['application']['steps'][number]['uploads']>['coverLetter'], doc: DocumentInfo, c: Config) {
   const expect = assertions(page);
@@ -96,10 +96,11 @@ export async function completeApplication(page: Page, loaded: Loaded, guard: Nav
   }
   if (used.size !== c.answers.length) throw new WorkflowError('QUESTION_NOT_FOUND', 'Not all configured screening questions were encountered.', 5, 'blocked');
   if (filled.size !== Object.keys(c.applicant ?? {}).length) throw new WorkflowError('APPLICANT_FIELDS_MISSING', 'Adapter did not fill every configured applicant field.', 5, 'blocked');
-  if (autoQuestions && !await visible(page, a.review.ready)) {
-    const next = a.application.steps.at(-1)?.next;
-    if (!next) throw new WorkflowError('UNSUPPORTED_SCREENING_QUESTION', 'No observed Continue control is available for the question page.', 5, 'blocked');
-    await completeAutomaticQuestions(page, a.review.ready, next, () => guard.checkPage(page));
+  if (autoQuestions) {
+    const lastStep = a.application.steps.at(-1)!;
+    const destination = await waitForReviewOrQuestions(page, a.review.ready, lastStep.next,
+      () => guard.checkPage(page), c.stepTimeoutMs, lastStep.ready);
+    if (destination === 'questions') await completeAutomaticQuestions(page, a.review.ready, lastStep.next, () => guard.checkPage(page), 8, c.stepTimeoutMs);
   }
   await assertReview(page, loaded, guard);
 }

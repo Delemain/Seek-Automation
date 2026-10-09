@@ -42,6 +42,26 @@ cli.command('batch-prepare [search]')
     const result = await runBatchPrepare(loaded, adapter, options.connectCdp);
     console.log(`Batch result: ${result.artifact}`);
   });
+cli.command('prepare-one <jobId>')
+  .description('Prepare one exact SEEK Quick Apply job, including supported screening pages; never submit.')
+  .requiredOption('-c, --config <path>', 'Configuration JSON file')
+  .requiredOption('--connect-cdp <url>', 'Attach to a manually signed-in dedicated local Chrome profile')
+  .requiredOption('--title <title>', 'Exact job title shown on SEEK')
+  .requiredOption('--employer <employer>', 'Exact employer shown on SEEK')
+  .option('--adapter <path>', 'Observed generic Quick Apply adapter', 'config/seek.batch.prepare.candidate.json')
+  .action(async (jobId, options) => {
+    if (!/^\d+$/.test(jobId)) invalid('prepare-one requires a numeric SEEK job ID.');
+    if (!options.title.trim() || !options.employer.trim()) invalid('Exact title and employer are required.');
+    validateCdpEndpoint(options.connectCdp);
+    const loaded = await loadConfig(options.config, { mode: 'prepare' });
+    loaded.adapter = await loadBatchAdapter(path.resolve(options.adapter));
+    loaded.config.target = { jobId, expectedTitle: options.title.trim(), expectedEmployer: options.employer.trim() };
+    if (loaded.config.answers.length || loaded.config.applicant) invalid('prepare-one uses automatic screening; remove preconfigured applicant fields and answer mappings from this config.');
+    const result = await runWorkflow(loaded, 'apply', async (name, action) => { console.log(name); return action(); },
+      { cdpEndpoint: options.connectCdp, directJob: true, autoQuestions: true });
+    console.log(`${result.status} [${result.code}]: ${result.message}\nResult: ${result.artifacts.result}`);
+    process.exitCode = result.exitCode;
+  });
 try { await cli.parseAsync(); }
 catch (e) {
   console.error(e instanceof WorkflowError ? `${e.code}: ${e.message}` : 'Execution failed. Check configuration, local permissions and browser installation.');

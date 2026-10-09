@@ -6,9 +6,9 @@ import type { Loaded, DocumentInfo, ExistingResumeInfo } from './config.js';
 import { WorkflowError, type TerminalStatus } from './errors.js';
 import { Ledger, atomicJson, accountReference } from './submission-ledger.js';
 import { configureContext, NavigationGuard, visible } from './pages/ui.js';
-import { applyFlow, reconcileFlow, type Step, type FlowState } from './flows/apply.js';
+import { applyFlow, reconcileFlow, type Step, type FlowState, type ApplyOptions } from './flows/apply.js';
 
-export type BrowserConnection = { cdpEndpoint?: string };
+export type BrowserConnection = { cdpEndpoint?: string } & ApplyOptions;
 export function validateCdpEndpoint(value: string): string {
   let url: URL;
   try { url = new URL(value); } catch { throw new WorkflowError('INVALID_CDP_ENDPOINT', 'The CDP endpoint must be an HTTP URL such as http://127.0.0.1:9222.', 2, 'blocked'); }
@@ -75,7 +75,9 @@ export async function runWorkflow(loaded: Loaded, operation: 'apply' | 'reconcil
       // Preserve first-failure evidence before closing the context to interrupt pending actions.
       deadlineCleanup = (async () => { await captureEvidence(); await state?.page.close().catch(() => {}); if (!cdpEndpoint) await context?.close().catch(() => {}); })();
     }, c.runTimeoutMs);
-    result.status = operation === 'apply' ? await applyFlow(loaded, state, ledger, runId, guard, step) : await reconcileFlow(loaded, state, ledger, guard, step);
+    if ((connection.directJob || connection.autoQuestions) && c.mode !== 'prepare')
+      throw new WorkflowError('PREPARE_ONLY', 'Direct job preparation and automatic screening are available only in prepare mode.', 2, 'blocked');
+    result.status = operation === 'apply' ? await applyFlow(loaded, state, ledger, runId, guard, step, connection) : await reconcileFlow(loaded, state, ledger, guard, step);
     guard.check();
     result.code = result.status === 'prepared' ? 'PREPARED' : result.status === 'submitted' ? 'SUBMITTED' : 'RECONCILED';
     result.exitCode = result.status === 'already_applied' ? 8 : 0;

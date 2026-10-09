@@ -45,6 +45,29 @@ async function questionSignature(root: Locator) {
     .join('|'));
 }
 
+async function continueButton(page: Page, next: LocatorSpec) {
+  let control = locate(page, next);
+  if (await control.count() === 0) control = page.getByRole('button', { name: /^(continue|next)$/i });
+  return control;
+}
+
+/** Do not treat the outgoing SEEK Profile page as a screening page while its transition is pending. */
+export async function waitForReviewOrQuestions(page: Page, review: LocatorSpec, next: LocatorSpec,
+  check: () => void, timeoutMs: number, previousStep?: LocatorSpec, previousSignature?: string) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    check();
+    if (await visible(page, review)) return 'review' as const;
+    if ((!previousStep || !await visible(page, previousStep)) && await page.locator('main').count() === 1) {
+      const current = await questionSignature(page.locator('main'));
+      const button = await continueButton(page, next);
+      if (current && current !== previousSignature && await button.count() === 1 && await button.isVisible()) return 'questions' as const;
+    }
+    await page.waitForTimeout(100);
+  }
+  throw new WorkflowError('APPLICATION_STEP_UNKNOWN', 'Continue did not reach a verified review or screening page before the step timeout.', 5, 'blocked');
+}
+
 async function fillInitial(root: Locator, page: Page) {
   let found = 0;
   const fields = root.locator('input, textarea, select, [role="combobox"]');
@@ -130,15 +153,19 @@ async function addOneChoice(root: Locator) {
 }
 
 /** Batch-only handling for ordinary question pages after the unchanged SEEK Profile step. */
-export async function completeAutomaticQuestions(page: Page, review: LocatorSpec, next: LocatorSpec, check: () => void, maxPages = 8) {
+export async function completeAutomaticQuestions(page: Page, review: LocatorSpec, next: LocatorSpec, check: () => void, maxPages = 8, stepTimeoutMs = 15000) {
+  let priorSignature: string | undefined;
   for (let pageNumber = 0; pageNumber < maxPages; pageNumber++) {
     check();
     if (await visible(page, review)) return;
+    if (priorSignature) {
+      const destination = await waitForReviewOrQuestions(page, review, next, check, stepTimeoutMs, undefined, priorSignature);
+      if (destination === 'review') return;
+    }
     if (await page.locator('main').count() !== 1) throw unsupported();
     const rootSelector = 'main';
     const root = page.locator(rootSelector);
-    let continueControl = locate(page, next);
-    if (await continueControl.count() === 0) continueControl = page.getByRole('button', { name: /^(continue|next)$/i });
+    const continueControl = await continueButton(page, next);
     if (await continueControl.count() !== 1 || !await continueControl.isVisible()) throw unsupported();
     const signature = await questionSignature(root);
     if (!signature) throw unsupported();
@@ -162,7 +189,7 @@ export async function completeAutomaticQuestions(page: Page, review: LocatorSpec
       } catch { /* The page did not advance; add one more answer below. */ }
       check();
       if (await visible(page, review)) return;
-      if (page.url() !== beforeUrl || normalize(await questionSignature(root)) !== normalize(beforeSignature)) { advanced = true; break; }
+      if (page.url() !== beforeUrl || normalize(await questionSignature(root)) !== normalize(beforeSignature)) { priorSignature = beforeSignature; advanced = true; break; }
       if (!await addOneChoice(root)) throw new WorkflowError('SCREENING_VALIDATION', 'The screening page did not advance after all supported answer choices were tried.', 5, 'blocked');
     }
     if (!advanced) throw new WorkflowError('SCREENING_VALIDATION', 'The screening page did not advance after the bounded answer attempts.', 5, 'blocked');

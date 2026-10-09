@@ -9,7 +9,8 @@ import { completeApplication, assertReview } from '../pages/application-page.js'
 
 export type Step = <T>(name: string, action: () => Promise<T>) => Promise<T>;
 export type FlowState = { phase: string; page: Page; attempted: boolean; confirmation?: string };
-export async function applyFlow(loaded: Loaded, state: FlowState, ledger: Ledger, runId: string, guard: NavigationGuard, step: Step): Promise<TerminalStatus> {
+export type ApplyOptions = { directJob?: boolean; autoQuestions?: boolean };
+export async function applyFlow(loaded: Loaded, state: FlowState, ledger: Ledger, runId: string, guard: NavigationGuard, step: Step, options: ApplyOptions = {}): Promise<TerminalStatus> {
   const expect = assertions(state.page);
   const { config: c, adapter: a } = loaded;
   await ledger.ensureUnused();
@@ -19,14 +20,23 @@ export async function applyFlow(loaded: Loaded, state: FlowState, ledger: Ledger
     guard.checkPage(state.page);
     await checkAuthentication(state.page, c, a);
   });
-  await step('Search and select the exact approved job', async () => {
-    state.phase = 'search'; state.page = await search(state.page, loaded, guard);
-  });
+  if (options.directJob) {
+    await step('Open the exact approved job', async () => {
+      state.phase = 'job';
+      const destination = new URL(`/job/${encodeURIComponent(c.target.jobId)}`, c.baseUrl);
+      await state.page.goto(destination.href, { waitUntil: 'commit' });
+      guard.checkPage(state.page);
+    });
+  } else {
+    await step('Search and select the exact approved job', async () => {
+      state.phase = 'search'; state.page = await search(state.page, loaded, guard);
+    });
+  }
   await step('Verify job and open application', async () => {
     state.phase = 'job'; state.page = await startApplication(state.page, loaded, guard); state.phase = 'application';
   });
   await step('Upload documents, complete questions and verify review', async () => {
-    state.phase = 'form'; await completeApplication(state.page, loaded, guard); state.phase = 'review';
+    state.phase = 'form'; await completeApplication(state.page, loaded, guard, options.autoQuestions); state.phase = 'review';
   });
   if (c.mode === 'prepare') return 'prepared';
   return step<TerminalStatus>('Record intent, submit once and verify confirmation', async () => {

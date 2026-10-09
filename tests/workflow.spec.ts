@@ -35,6 +35,32 @@ test('prepare searches exact ID, uploads both new files despite reversed inputs,
     expect((await readFile(result.artifacts.result, 'utf8'))).not.toContain('test@example.invalid');
   });
 });
+test('prepare-one opens only the approved job and reaches review without employer questions', async () => {
+  const server = await startFixture({ existingResume: true, profileOnly: true, radioCoverCompletion: true });
+  const files = await fixtureConfig(server.origin);
+  try {
+    const config = JSON.parse(await readFile(files.file, 'utf8'));
+    config.documents = { existingResumeFilename: 'Resume.docx', coverLetterPath: './Cover Letter.docx' };
+    delete config.applicant;
+    config.answers = [];
+    await writeFile(files.file, JSON.stringify(config));
+    const adapter = structuredClone(fixtureAdapter);
+    adapter.application.steps[0].uploads!.existingResume = { option: { by: 'role', role: 'radio', value: 'Resume.docx' } };
+    delete adapter.application.steps[0].uploads!.resume;
+    adapter.application.steps[0].uploads!.coverLetter = { input: { by: 'label', value: 'Upload cover letter' }, selectedRadio: { by: 'testId', value: 'cover-choice' } };
+    adapter.application.steps[1].ready = { by: 'testId', value: 'profile' };
+    adapter.application.steps[1].next = { by: 'role', role: 'button', value: 'Continue' };
+    delete adapter.application.steps[1].fields;
+    delete adapter.application.steps[1].questionRegion;
+    await writeFile(path.join(files.dir, 'adapter.json'), JSON.stringify(adapter));
+    const loaded = await loadConfig(files.file);
+    const result = await runWorkflow(loaded, 'apply', (name, fn) => test.step(name, fn), { directJob: true, autoQuestions: true });
+    expect(result.status, result.message).toBe('prepared');
+    expect(server.state.searches).toHaveLength(0);
+    expect(server.state.selectedJobs).toEqual(['94974243']);
+    expect(server.state.submissions).toBe(0);
+  } finally { await server.close(); await rm(files.dir, { recursive: true, force: true }); }
+});
 test('name-only search clears a prefilled location and still selects the exact job', async () => {
   await scenario({ prefilledSearchLocation: true }, async (loaded, server) => {
     loaded.config.location = '';

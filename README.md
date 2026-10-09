@@ -85,6 +85,14 @@ This is the first live automated check, not a verified path yet. It checks the c
 
 `batch-prepare` is a separate, supervised command. It searches for the configured query, lists up to five visible result cards with their title and employer, and skips a card only when its visible text explicitly says `Applied`. It does **not** infer application history from the absence of that label. It requires exactly five eligible visible cards and the exact terminal response `PREPARE 5` before opening five runner tabs. It then prepares each matching Quick Apply form sequentially, closes the runner tabs, and prints the jobs that reached review. It never clicks Submit.
 
+For a focused one-job test, use `prepare-one`. It opens only the exact SEEK job ID you supply, verifies the displayed title and employer, checks the signed-in account before uploading, and stops at review. It does not search or click Submit. For the operator-confirmed no-questions example:
+
+```powershell
+npm run prepare:one -- 95100986 --title "Senior Finance Business Partner" --employer "Dean & Ling Executive" --config config/local.json --connect-cdp http://127.0.0.1:9222
+```
+
+The command uses the generic observed Quick Apply adapter by default, regardless of the original test-job adapter in `config/local.json`. It requires the existing résumé and cover-letter settings there, with no preconfigured `answers` or `applicant` fields. A private `artifacts/<run-id>/result.json` and screenshot show the outcome; the screenshot can contain personal information, so review it before sharing. A different job needs its own exact ID, title, and employer. Local fixture tests cover both the no-questions transition and deterministic question controls, but this command still needs a supervised live run before claiming it works on that SEEK job.
+
 With the dedicated signed-in Chrome profile still open, run:
 
 ```powershell
