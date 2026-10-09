@@ -1,12 +1,14 @@
-import { open, readFile, rm } from 'node:fs/promises';
+import { mkdir, open, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { atomicJson } from './submission-ledger.js';
 import { WorkflowError } from './errors.js';
+import type { ScreeningPageAudit } from './pages/screening-audit.js';
 
-export type RunHistoryJob = { jobId: string; title: string; employer: string; seekUrl: string; status: 'ready_to_submit' | 'skipped'; reason?: { code: string; message: string } };
+export type RunHistoryJob = { jobId: string; title: string; employer: string; seekUrl: string; status: 'ready_to_submit' | 'skipped'; reason?: { code: string; message: string }; screeningAudit?: ScreeningPageAudit[] };
 export type RunHistoryEntry = {
   runId: string; requestedAt: string; completedAt?: string;
-  request: { command: 'batch-prepare'; searchText: string; location: string; limit: number };
+  request: { command: 'batch-prepare'; searchText: string; location: string; limit: number }
+    | { command: 'prepare-one'; jobId: string; title: string; employer: string };
   foundJobs: Array<{ jobId: string; title: string; employer: string; seekUrl: string }>;
   jobs: RunHistoryJob[];
   status: 'running' | 'completed' | 'cancelled' | 'failed'; failure?: { code: string; message: string };
@@ -28,6 +30,7 @@ export class RunHistory {
   }
   async acquire() {
     this.lock = this.file + '.lock';
+    await mkdir(path.dirname(this.file), { recursive: true, mode: 0o700 });
     try { await open(this.lock, 'wx', 0o600).then(handle => handle.close()); }
     catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new WorkflowError('RUN_HISTORY_LOCKED', 'Another batch run is updating the private run history.', 8, 'blocked');

@@ -4,6 +4,7 @@ import { documentInfo } from '../config.js';
 import { WorkflowError } from '../errors.js';
 import { assertions, identity, locate, unique, visible, exact, type NavigationGuard } from './ui.js';
 import { completeAutomaticQuestions, waitForDestinationOrQuestions } from './automatic-questions.js';
+import { beginScreeningPage, snapshotScreening, updateScreeningPage, type ScreeningPageAudit } from './screening-audit.js';
 
 async function upload(page: Page, spec: NonNullable<Adapter['application']['steps'][number]['uploads']>['coverLetter'], doc: DocumentInfo, c: Config) {
   const expect = assertions(page);
@@ -37,12 +38,14 @@ async function fillAnswer(control: Locator, answer: Config['answers'][number]) {
     }
   }
 }
-export async function completeApplication(page: Page, loaded: Loaded, guard: NavigationGuard, autoQuestions = false) {
+export async function completeApplication(page: Page, loaded: Loaded, guard: NavigationGuard, autoQuestions = false, screeningAudit: ScreeningPageAudit[] = []) {
   const expect = assertions(page);
   const { config: c, adapter: a, documents: docs } = loaded;
   const used = new Set<string>();
   const filled = new Set<string>();
   for (const [index, step] of a.application.steps.entries()) {
+    let configuredAudit: ScreeningPageAudit | undefined;
+    let configuredRegion: Locator | undefined;
     guard.checkPage(page);
     await expect(locate(page, step.ready)).toBeVisible();
     if (step.uploads) {
@@ -67,6 +70,9 @@ export async function completeApplication(page: Page, loaded: Loaded, guard: Nav
     }
     if (step.questionRegion) {
       const region = await unique(page, step.questionRegion);
+      configuredRegion = region;
+      configuredAudit = beginScreeningPage(screeningAudit.length + 1, page.url(), await snapshotScreening(region));
+      screeningAudit.push(configuredAudit);
       const controls: Locator[] = [];
       for (const answer of c.answers) {
         const control = locate(region, answer.locator);
@@ -91,6 +97,7 @@ export async function completeApplication(page: Page, loaded: Loaded, guard: Nav
     }
     if (await visible(page, step.validationErrors)) throw new WorkflowError('FORM_VALIDATION', 'Form validation errors are visible.');
     guard.check();
+    if (configuredAudit && configuredRegion) updateScreeningPage(configuredAudit, await snapshotScreening(configuredRegion));
     await (await unique(page, step.next)).click();
     if (await visible(page, step.validationErrors)) throw new WorkflowError('FORM_VALIDATION', 'Form rejected configured inputs.');
     if (autoQuestions) {
@@ -104,7 +111,7 @@ export async function completeApplication(page: Page, loaded: Loaded, guard: Nav
       const stage = await waitForDestinationOrQuestions(page, destination, step.next,
         () => guard.checkPage(page), c.stepTimeoutMs, outgoing);
       if (stage === 'questions') await completeAutomaticQuestions(page, destination, step.next,
-        () => guard.checkPage(page), 8, c.stepTimeoutMs);
+        () => guard.checkPage(page), 8, c.stepTimeoutMs, screeningAudit);
     }
   }
   if (used.size !== c.answers.length) throw new WorkflowError('QUESTION_NOT_FOUND', 'Not all configured screening questions were encountered.', 5, 'blocked');

@@ -26,12 +26,13 @@ test('run history appends a request and atomically records its job outcome', asy
     await history.append({ runId: 'run-1', requestedAt: '2026-10-09T00:00:00.000Z', request: { command: 'batch-prepare', searchText: 'AI Engineer', location: '', limit: 5 }, foundJobs: [], jobs: [], status: 'running' });
     await history.update('run-1', entry => {
       entry.foundJobs.push({ jobId: '94974243', title: 'AI Engineer', employer: 'SustainRecruit', seekUrl: 'https://au.seek.com/job/94974243' });
-      entry.jobs.push({ jobId: '94974243', title: 'AI Engineer', employer: 'SustainRecruit', seekUrl: 'https://au.seek.com/job/94974243', status: 'ready_to_submit' });
+      entry.jobs.push({ jobId: '94974243', title: 'AI Engineer', employer: 'SustainRecruit', seekUrl: 'https://au.seek.com/job/94974243', status: 'ready_to_submit', screeningAudit: [{ pageNumber: 1, pageAddress: 'https://au.seek.com/job/94974243/apply/questions', attempts: 1, fields: [{ key: '0:select', kind: 'select', question: 'Experience', required: true, selectedBefore: ['Choose'], selectedAtContinue: ['First'], changedByAutomation: true }] }] });
       entry.status = 'completed'; entry.completedAt = '2026-10-09T00:01:00.000Z';
     });
     const saved = JSON.parse(await readFile(history.path, 'utf8'));
     expect(saved.runs).toHaveLength(1);
     expect(saved.runs[0].request.searchText).toBe('AI Engineer');
     expect(saved.runs[0].jobs[0].status).toBe('ready_to_submit');
+    expect(saved.runs[0].jobs[0].screeningAudit[0].fields[0].selectedAtContinue).toEqual(['First']);
   } finally { await history.release(); await rm(directory, { recursive: true, force: true }); }
 });

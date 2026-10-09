@@ -29,6 +29,8 @@ test('prepare searches exact ID, uploads both new files despite reversed inputs,
     expect(server.state.uploads[0].body).toContain('Synthetic resume fixture bytes');
     expect(server.state.uploads[1].body).toContain('Synthetic cover letter fixture bytes');
     expect(server.state.submissions).toBe(0);
+    expect(result.screeningAudit).toHaveLength(1);
+    expect(result.screeningAudit[0].fields.find(field => field.name === 'experience')?.selectedAtContinue).toBe('Test experience');
     expect(result.artifacts.screenshot).toBeTruthy();
     expect(result.artifacts.trace).toBeTruthy();
     expect(await new Ledger(loaded.config).read()).toBeUndefined();
@@ -43,6 +45,7 @@ for (const questionsBeforeProfile of [false, true]) test(`prepare-one reaches re
     config.documents = { existingResumeFilename: 'Resume.docx', coverLetterPath: './Cover Letter.docx' };
     delete config.applicant;
     config.answers = [];
+    config.runHistoryPath = './run-history.json';
     await writeFile(files.file, JSON.stringify(config));
     const adapter = structuredClone(fixtureAdapter);
     adapter.application.steps[0].uploads!.existingResume = { option: { by: 'role', role: 'radio', value: 'Resume.docx' } };
@@ -59,6 +62,18 @@ for (const questionsBeforeProfile of [false, true]) test(`prepare-one reaches re
     expect(server.state.searches).toHaveLength(0);
     expect(server.state.selectedJobs).toEqual(['94974243']);
     expect(server.state.screeningAnswers).toEqual(questionsBeforeProfile ? [{ experience: 'first', licence: 'first', skills: ['first'], details: 'N/A' }] : []);
+    expect(result.screeningAudit).toHaveLength(questionsBeforeProfile ? 1 : 0);
+    if (questionsBeforeProfile) {
+      const fields = result.screeningAudit[0].fields;
+      expect(fields.find(field => field.name === 'experience')?.selectedAtContinue).toEqual(['First']);
+      expect(fields.find(field => field.name === 'licence' && field.optionValue === 'first')?.selectedAtContinue).toBe(true);
+      expect(fields.find(field => field.name === 'skills' && field.optionValue === 'first')?.selectedAtContinue).toBe(true);
+      expect(fields.find(field => field.name === 'details')?.selectedAtContinue).toBe('N/A');
+      expect(JSON.parse(await readFile(result.artifacts.result, 'utf8')).screeningAudit).toEqual(result.screeningAudit);
+    }
+    const history = JSON.parse(await readFile(result.history!, 'utf8'));
+    expect(history.runs[0].request).toMatchObject({ command: 'prepare-one', jobId: '94974243' });
+    expect(history.runs[0].jobs[0].screeningAudit).toEqual(result.screeningAudit);
     expect(server.state.submissions).toBe(0);
   } finally { await server.close(); await rm(files.dir, { recursive: true, force: true }); }
 });

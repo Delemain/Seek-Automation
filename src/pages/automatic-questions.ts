@@ -2,6 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 import type { LocatorSpec } from '../config.js';
 import { WorkflowError } from '../errors.js';
 import { locate, visible } from './ui.js';
+import { beginScreeningPage, snapshotScreening, updateScreeningPage, type ScreeningPageAudit } from './screening-audit.js';
 
 const unsupported = () => new WorkflowError('UNSUPPORTED_SCREENING_QUESTION', 'A screening control could not be answered with the configured deterministic rules.', 5, 'blocked');
 const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
@@ -164,7 +165,8 @@ async function addOneChoice(root: Locator) {
 }
 
 /** Prepare-only screening handler. Stops at the next known step; never clicks Submit. */
-export async function completeAutomaticQuestions(page: Page, destination: LocatorSpec, next: LocatorSpec, check: () => void, maxPages = 8, stepTimeoutMs = 15000) {
+export async function completeAutomaticQuestions(page: Page, destination: LocatorSpec, next: LocatorSpec, check: () => void,
+  maxPages = 8, stepTimeoutMs = 15000, audit: ScreeningPageAudit[] = []) {
   let priorSignature: string | undefined;
   for (let pageNumber = 0; pageNumber < maxPages; pageNumber++) {
     check();
@@ -178,12 +180,15 @@ export async function completeAutomaticQuestions(page: Page, destination: Locato
     if (await continueControl.count() !== 1 || !await continueControl.isVisible()) throw unsupported();
     const signature = await questionSignature(root);
     if (!signature) throw unsupported();
+    const pageAudit = beginScreeningPage(audit.length + 1, page.url(), await snapshotScreening(root));
+    audit.push(pageAudit);
     await fillInitial(root, page);
     let advanced = false;
     for (let attempt = 0; attempt < 20; attempt++) {
       check();
       const beforeUrl = page.url();
       const beforeSignature = await questionSignature(root);
+      updateScreeningPage(pageAudit, await snapshotScreening(root));
       await continueControl.click({ noWaitAfter: true });
       try {
         await page.waitForFunction(({ previous, url, destinationSelector, rootSelector }) => {

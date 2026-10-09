@@ -11,9 +11,10 @@ import { validateCdpEndpoint } from './reporting.js';
 import { checkAuthentication, configureContext, locate, unique, visible, NavigationGuard } from './pages/ui.js';
 import { startApplication } from './pages/job-page.js';
 import { completeApplication } from './pages/application-page.js';
+import type { ScreeningPageAudit } from './pages/screening-audit.js';
 
 export type BatchCandidate = { jobId: string; title: string; employer: string; url: string };
-export type BatchItem = BatchCandidate & { status: 'ready' | 'skipped'; code?: string; message?: string };
+export type BatchItem = BatchCandidate & { status: 'ready' | 'skipped'; code?: string; message?: string; screeningAudit: ScreeningPageAudit[] };
 export type BatchResult = { runId: string; query: string; location: string; candidates: BatchItem[]; artifact: string; history: string };
 
 export async function loadBatchAdapter(file: string): Promise<Adapter> {
@@ -110,26 +111,27 @@ export async function runBatchPrepare(loaded: Loaded, batchAdapter: Adapter, cdp
     await discoveryPage.close(); discoveryPage = undefined;
     for (const entry of pages) {
       let active = entry.page;
+      const screeningAudit: ScreeningPageAudit[] = [];
       try {
         const job = jobLoaded(loaded, batchAdapter, entry.candidate);
         await checkAuthentication(active, job.config, job.adapter);
         active = await startApplication(active, job, guard);
-        await completeApplication(active, job, guard, true);
-        result.candidates.push({ ...entry.candidate, status: 'ready' });
+        await completeApplication(active, job, guard, true, screeningAudit);
+        result.candidates.push({ ...entry.candidate, status: 'ready', screeningAudit });
       } catch (error) {
         const e = error instanceof WorkflowError ? error : new WorkflowError('WORKFLOW_FAILED', 'Form did not match the observed batch workflow.');
-        result.candidates.push({ ...entry.candidate, status: 'skipped', code: e.code, message: e.message });
+        result.candidates.push({ ...entry.candidate, status: 'skipped', code: e.code, message: e.message, screeningAudit });
       } finally {
         if (active !== entry.page) await entry.page.close().catch(() => {});
         await active.close().catch(() => {});
       }
-      await history.update(runId, record => { record.jobs = result.candidates.map(item => ({ jobId: item.jobId, title: item.title, employer: item.employer, seekUrl: item.url, status: item.status === 'ready' ? 'ready_to_submit' : 'skipped', ...(item.code ? { reason: { code: item.code, message: item.message! } } : {}) })); });
+      await history.update(runId, record => { record.jobs = result.candidates.map(item => ({ jobId: item.jobId, title: item.title, employer: item.employer, seekUrl: item.url, status: item.status === 'ready' ? 'ready_to_submit' : 'skipped', screeningAudit: item.screeningAudit, ...(item.code ? { reason: { code: item.code, message: item.message! } } : {}) })); });
     }
     await history.update(runId, record => { record.status = 'completed'; record.completedAt = new Date().toISOString(); });
   } catch (error) {
     const e = error instanceof WorkflowError ? error : new WorkflowError('WORKFLOW_FAILED', 'Batch workflow failed before completion.');
     await history.update(runId, record => {
-      record.jobs = result.candidates.map(item => ({ jobId: item.jobId, title: item.title, employer: item.employer, seekUrl: item.url, status: item.status === 'ready' ? 'ready_to_submit' : 'skipped', ...(item.code ? { reason: { code: item.code, message: item.message! } } : {}) }));
+      record.jobs = result.candidates.map(item => ({ jobId: item.jobId, title: item.title, employer: item.employer, seekUrl: item.url, status: item.status === 'ready' ? 'ready_to_submit' : 'skipped', screeningAudit: item.screeningAudit, ...(item.code ? { reason: { code: item.code, message: item.message! } } : {}) }));
       record.status = e.code === 'BATCH_CANCELLED' ? 'cancelled' : 'failed';
       record.failure = { code: e.code, message: e.message };
       record.completedAt = new Date().toISOString();

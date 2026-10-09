@@ -8,6 +8,8 @@ import { Ledger, atomicJson, accountReference } from './submission-ledger.js';
 import { configureContext, NavigationGuard, visible } from './pages/ui.js';
 import { applyFlow, reconcileFlow, type Step, type FlowState, type ApplyOptions } from './flows/apply.js';
 import { captureControls } from './inspection.js';
+import type { ScreeningPageAudit } from './pages/screening-audit.js';
+import { RunHistory, type RunHistoryEntry } from './run-history.js';
 
 export type BrowserConnection = { cdpEndpoint?: string } & ApplyOptions;
 export function validateCdpEndpoint(value: string): string {
@@ -22,6 +24,7 @@ export type Result = {
   runId: string; startedAt: string; finishedAt: string; operation: 'apply' | 'reconcile';
   mode: string; query: string; location: string; target: Loaded['config']['target']; accountReference: string;
   documents: { resume: Omit<DocumentInfo, 'path'> | ExistingResumeInfo; coverLetter: Omit<DocumentInfo, 'path'> };
+  screeningAudit: ScreeningPageAudit[]; history?: string;
   phase: string; status: TerminalStatus; code: string; message: string; exitCode: number; confirmation?: string;
   artifacts: { result: string; screenshot?: string; trace?: string; controls?: string };
 };
@@ -36,10 +39,11 @@ export async function runWorkflow(loaded: Loaded, operation: 'apply' | 'reconcil
   const strip = ({ path: _path, ...rest }: DocumentInfo) => rest;
   const result: Result = { runId, startedAt: new Date().toISOString(), finishedAt: '', operation, mode: c.mode,
     query: c.query, location: c.location, target: c.target, accountReference: accountReference(c),
-    documents: { resume: d.resume.source === 'local' ? strip(d.resume) : d.resume, coverLetter: strip(d.coverLetter) },
+    documents: { resume: d.resume.source === 'local' ? strip(d.resume) : d.resume, coverLetter: strip(d.coverLetter) }, screeningAudit: [],
     phase: 'preflight', status: 'failed', code: 'WORKFLOW_FAILED', message: '', exitCode: 6,
     artifacts: { result: path.join(directory, 'result.json') } };
   const ledger = new Ledger(c);
+  const history = operation === 'apply' && connection.directJob ? new RunHistory(c.runHistoryPath) : undefined;
   const guard = new NavigationGuard(c);
   const cdpEndpoint = connection.cdpEndpoint ? validateCdpEndpoint(connection.cdpEndpoint) : undefined;
   let browser: Browser | undefined, context: BrowserContext | undefined, state: FlowState | undefined, timer: NodeJS.Timeout | undefined;
@@ -58,6 +62,15 @@ export async function runWorkflow(loaded: Loaded, operation: 'apply' | 'reconcil
     }
   })();
   try {
+    if (history) {
+      await history.acquire();
+      const entry: RunHistoryEntry = { runId, requestedAt: result.startedAt,
+        request: { command: 'prepare-one', jobId: c.target.jobId, title: c.target.expectedTitle, employer: c.target.expectedEmployer },
+        foundJobs: [{ jobId: c.target.jobId, title: c.target.expectedTitle, employer: c.target.expectedEmployer, seekUrl: new URL(`/job/${encodeURIComponent(c.target.jobId)}`, c.baseUrl).href }],
+        jobs: [], status: 'running' };
+      await history.append(entry);
+      result.history = history.path;
+    }
     await ledger.acquire(runId);
     if (operation === 'apply') await ledger.ensureUnused();
     if (cdpEndpoint) {
@@ -72,7 +85,7 @@ export async function runWorkflow(loaded: Loaded, operation: 'apply' | 'reconcil
       catch { throw new WorkflowError('AUTH_STATE_MISSING', 'Cannot load isolated authentication state. Run npm run auth first.', 3, 'blocked'); }
     }
     configureContext(context, c.stepTimeoutMs);
-    state = { phase: 'preflight', page: await context.newPage(), attempted: false };
+    state = { phase: 'preflight', page: await context.newPage(), attempted: false, screeningAudit: result.screeningAudit };
     if (cdpEndpoint) await guard.installPage(state.page);
     else { await guard.install(context); await context.tracing.start({ screenshots: true, snapshots: true, sources: true }); }
     timer = setTimeout(() => {
@@ -112,6 +125,18 @@ export async function runWorkflow(loaded: Loaded, operation: 'apply' | 'reconcil
     if (!cdpEndpoint) await browser?.close().catch(() => {});
     try { await ledger.release(); } catch { result.message += ' Lock cleanup failed; inspect stale-lock instructions.'; }
     result.finishedAt = new Date().toISOString();
+    if (history && result.history) {
+      await history.update(runId, record => {
+        record.jobs = [{ jobId: c.target.jobId, title: c.target.expectedTitle, employer: c.target.expectedEmployer,
+          seekUrl: new URL(`/job/${encodeURIComponent(c.target.jobId)}`, c.baseUrl).href,
+          status: result.status === 'prepared' ? 'ready_to_submit' : 'skipped', screeningAudit: result.screeningAudit,
+          ...(result.status === 'prepared' ? {} : { reason: { code: result.code, message: result.message } }) }];
+        record.status = result.status === 'prepared' ? 'completed' : 'failed';
+        if (result.status !== 'prepared') record.failure = { code: result.code, message: result.message };
+        record.completedAt = result.finishedAt;
+      }).catch(() => { result.message += ' Private run history could not be updated; result.json retains this run.'; });
+    }
+    await history?.release().catch(() => { result.message += ' Run history lock cleanup failed; check the private lock file before retrying.'; });
     await atomicJson(result.artifacts.result, result);
   }
   return result;
