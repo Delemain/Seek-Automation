@@ -51,13 +51,13 @@ test('third-party measurement frame does not count as an external application fl
     expect(result.status, result.message).toBe('prepared');
   });
 });
-test('follows the exact selected job link only when its client-side activation does not complete', async () => {
+test('opens the verified selected job link in a clean runner tab', async () => {
   await scenario({ inlineDetail: true }, async loaded => {
     const result = await run(loaded);
     expect(result.status, result.message).toBe('prepared');
   });
 });
-for (const wrongApplyHref of [false, true]) test(`in-place SEEK job panel ${wrongApplyHref ? 'rejects a wrong Apply destination' : 'verifies exact Apply href and accessible identity'}`, async () => {
+for (const wrongApplyHref of [false, true]) test(`verified job detail ${wrongApplyHref ? 'rejects a wrong Apply destination' : 'verifies exact Apply href and accessible identity'}`, async () => {
   const server = await startFixture({ inlineDetail: true, wrongApplyHref });
   const files = await fixtureConfig(server.origin);
   try {
@@ -68,7 +68,7 @@ for (const wrongApplyHref of [false, true]) test(`in-place SEEK job panel ${wron
     await writeFile(path.join(files.dir, 'adapter.json'), JSON.stringify(adapter));
     const result = await run(await loadConfig(files.file));
     expect(result.code, result.message).toBe(wrongApplyHref ? 'TARGET_MISMATCH' : 'PREPARED');
-    expect(server.state.selectedJobs).toHaveLength(0);
+    expect(server.state.selectedJobs).toHaveLength(1);
     expect(server.state.uploads).toHaveLength(wrongApplyHref ? 0 : 2);
     expect(server.state.submissions).toBe(0);
   } finally { await server.close(); await rm(files.dir, { recursive: true, force: true }); }

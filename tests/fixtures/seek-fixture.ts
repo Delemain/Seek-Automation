@@ -54,7 +54,9 @@ export async function startFixture(options: Options = {}) {
       state.selectedJobs.push(url.pathname.split('/').at(-1)!);
       const dest = options.external ? 'http://127.0.0.1:9/external' : '/apply';
       const go = options.popup ? `window.open('${dest}')` : `location.href='${dest}'`;
-      res.end(html(`<section data-testid="job">${options.mismatch ? jobIdentity.replace('Fixture Employer', 'Different Employer') : jobIdentity}${options.alreadyApplied ? '<p data-testid="already">Already applied</p>' : ''}<button onclick="${go}">Apply</button></section>`)); return;
+      const applyHref = `/job/${options.wrongApplyHref ? '99999999' : '94974243'}/apply`;
+      const apply = `<a href="${applyHref}" aria-label="Apply for QA Test Engineer at Fixture Employer" onclick="event.preventDefault();${go}">Quick apply</a>`;
+      res.end(html(`<section data-testid="job">${options.mismatch ? jobIdentity.replace('Fixture Employer', 'Different Employer') : jobIdentity}${apply}${options.alreadyApplied ? '<p data-testid="already">Already applied</p>' : ''}<button onclick="${go}">Apply</button></section>`)); return;
     }
     if (url.pathname === '/apply') {
       // Cover letter intentionally comes first. No positional upload locators can pass.
