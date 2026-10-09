@@ -3,6 +3,7 @@ import type { Loaded, Config, DocumentInfo, Adapter } from '../config.js';
 import { documentInfo } from '../config.js';
 import { WorkflowError } from '../errors.js';
 import { assertions, identity, locate, unique, visible, exact, type NavigationGuard } from './ui.js';
+import { completeAutomaticQuestions } from './automatic-questions.js';
 
 async function upload(page: Page, spec: NonNullable<Adapter['application']['steps'][number]['uploads']>['coverLetter'], doc: DocumentInfo, c: Config) {
   const expect = assertions(page);
@@ -36,7 +37,7 @@ async function fillAnswer(control: Locator, answer: Config['answers'][number]) {
     }
   }
 }
-export async function completeApplication(page: Page, loaded: Loaded, guard: NavigationGuard) {
+export async function completeApplication(page: Page, loaded: Loaded, guard: NavigationGuard, autoQuestions = false) {
   const expect = assertions(page);
   const { config: c, adapter: a, documents: docs } = loaded;
   const used = new Set<string>();
@@ -95,6 +96,11 @@ export async function completeApplication(page: Page, loaded: Loaded, guard: Nav
   }
   if (used.size !== c.answers.length) throw new WorkflowError('QUESTION_NOT_FOUND', 'Not all configured screening questions were encountered.', 5, 'blocked');
   if (filled.size !== Object.keys(c.applicant ?? {}).length) throw new WorkflowError('APPLICANT_FIELDS_MISSING', 'Adapter did not fill every configured applicant field.', 5, 'blocked');
+  if (autoQuestions && !await visible(page, a.review.ready)) {
+    const next = a.application.steps.at(-1)?.next;
+    if (!next) throw new WorkflowError('UNSUPPORTED_SCREENING_QUESTION', 'No observed Continue control is available for the question page.', 5, 'blocked');
+    await completeAutomaticQuestions(page, a.review.ready, next, () => guard.checkPage(page));
+  }
   await assertReview(page, loaded, guard);
 }
 export function answerText(value: string | boolean | string[]) { return Array.isArray(value) ? value.join(', ') : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : value; }

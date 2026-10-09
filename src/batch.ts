@@ -114,7 +114,7 @@ export async function runBatchPrepare(loaded: Loaded, batchAdapter: Adapter, cdp
         const job = jobLoaded(loaded, batchAdapter, entry.candidate);
         await checkAuthentication(active, job.config, job.adapter);
         active = await startApplication(active, job, guard);
-        await completeApplication(active, job, guard);
+        await completeApplication(active, job, guard, true);
         result.candidates.push({ ...entry.candidate, status: 'ready' });
       } catch (error) {
         const e = error instanceof WorkflowError ? error : new WorkflowError('WORKFLOW_FAILED', 'Form did not match the observed batch workflow.');
