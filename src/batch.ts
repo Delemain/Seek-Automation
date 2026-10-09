@@ -8,7 +8,7 @@ import { WorkflowError } from './errors.js';
 import { atomicJson } from './submission-ledger.js';
 import { RunHistory, type RunHistoryEntry } from './run-history.js';
 import { validateCdpEndpoint } from './reporting.js';
-import { checkAuthentication, configureContext, locate, unique, visible, NavigationGuard } from './pages/ui.js';
+import { checkAuthentication, configureContext, locate, unique, NavigationGuard } from './pages/ui.js';
 import { startApplication } from './pages/job-page.js';
 import { completeApplication } from './pages/application-page.js';
 import type { ScreeningPageAudit } from './pages/screening-audit.js';
@@ -42,6 +42,30 @@ export async function loadBatchAdapter(file: string): Promise<Adapter> {
 /** A card is skipped only when SEEK visibly marks that card as Applied. */
 export function hasExplicitAppliedMarker(text: string) { return /\bapplied\b/i.test(text); }
 
+/** Visible card IDs are used to distinguish new search results from homepage recommendations. */
+export async function visibleResultCardIds(page: Page, adapter: Adapter): Promise<string[]> {
+  const ids: string[] = [];
+  for (const card of await locate(page, adapter.search.card).all()) {
+    if (!await card.isVisible().catch(() => false)) continue;
+    const id = await card.getAttribute(adapter.search.cardJobIdAttribute);
+    if (id) ids.push(id);
+  }
+  return ids;
+}
+
+/** Wait until the search has replaced the previously visible cards, never merely for a card to exist. */
+export async function waitForChangedSearchResults(page: Page, adapter: Adapter, previousIds: string[], check: () => void, timeoutMs: number): Promise<string[]> {
+  const deadline = Date.now() + timeoutMs;
+  const previous = JSON.stringify(previousIds);
+  while (Date.now() < deadline) {
+    check();
+    const current = await visibleResultCardIds(page, adapter);
+    if (current.length && JSON.stringify(current) !== previous) return current;
+    await page.waitForTimeout(100);
+  }
+  throw new WorkflowError('SEARCH_RESULTS_UNCHANGED', 'SEEK did not replace the visible job cards after Search. No homepage or stale results were prepared.', 5, 'blocked');
+}
+
 export async function discoverBatchCandidates(page: Page, loaded: Loaded, adapter: Adapter, guard: NavigationGuard, limit: number): Promise<BatchCandidate[]> {
   const { config: c } = loaded;
   await page.goto(c.baseUrl, { waitUntil: 'domcontentloaded' });
@@ -49,8 +73,9 @@ export async function discoverBatchCandidates(page: Page, loaded: Loaded, adapte
   await checkAuthentication(page, c, adapter);
   await (await unique(page, adapter.search.query)).fill(c.query);
   await (await unique(page, adapter.search.location)).fill(c.location);
+  const previousIds = await visibleResultCardIds(page, adapter);
   await (await unique(page, adapter.search.submit)).click();
-  await locate(page, adapter.search.results).first().waitFor({ state: 'visible' });
+  await waitForChangedSearchResults(page, adapter, previousIds, () => guard.checkPage(page), c.stepTimeoutMs);
   const candidates: BatchCandidate[] = [];
   for (const card of await locate(page, adapter.search.card).all()) {
     if (candidates.length === limit) break;

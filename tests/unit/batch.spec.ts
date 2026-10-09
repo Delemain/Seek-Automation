@@ -2,12 +2,24 @@ import { expect, test } from '@playwright/test';
 import path from 'node:path';
 import os from 'node:os';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { hasExplicitAppliedMarker, loadBatchAdapter, planReadySubmissions, type BatchItem } from '../../src/batch.js';
+import { hasExplicitAppliedMarker, loadBatchAdapter, planReadySubmissions, visibleResultCardIds, waitForChangedSearchResults, type BatchItem } from '../../src/batch.js';
+import { fixtureAdapter } from '../fixtures/seek-fixture.js';
 import { RunHistory } from '../../src/run-history.js';
 
 test('batch discovery skips only an explicit Applied marker', () => {
   expect(hasExplicitAppliedMarker('AI Engineer - Applied')).toBe(true);
   expect(hasExplicitAppliedMarker('AI Engineer\nSubmit an application today')).toBe(false);
+});
+
+test('batch search waits for replacement cards instead of reusing visible homepage cards', async ({ page }) => {
+  await page.setContent(`<button>Search</button>
+    <section><article data-testid="job-card" data-job-id="homepage">Homepage recommendation</article></section>`);
+  const previous = await visibleResultCardIds(page, fixtureAdapter);
+  await page.getByRole('button', { name: 'Search' }).click();
+  await page.evaluate(() => setTimeout(() => {
+    document.querySelector('section')!.innerHTML = '<article data-testid="job-card" data-job-id="new">New result</article>';
+  }, 150));
+  await expect(waitForChangedSearchResults(page, fixtureAdapter, previous, () => {}, 1000)).resolves.toEqual(['new']);
 });
 
 test('observed batch adapter includes title and employer card mappings', async () => {
