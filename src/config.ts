@@ -9,28 +9,35 @@ export const locatorSchema = z.object({
   by: z.enum(['role', 'label', 'testId', 'text', 'css']), value: z.string().min(1),
   role: z.string().optional(),
 }).strict().refine(x => x.by !== 'role' || !!x.role, 'Role locators need a role');
-const identitySchema = z.object({ account: locatorSchema, jobId: locatorSchema, title: locatorSchema, employer: locatorSchema }).strict();
-const uploadSchema = z.object({ input: locatorSchema, completed: locatorSchema, filename: locatorSchema, error: locatorSchema.optional() }).strict();
+const identitySchema = z.object({ account: locatorSchema.optional(), accountFromConfigText: z.literal(true).optional(), jobId: locatorSchema.optional(), jobIdFromUrl: z.literal(true).optional(), jobIdFromApplyHref: locatorSchema.optional(), title: locatorSchema.optional(), employer: locatorSchema.optional(), titleEmployerFromApplyName: locatorSchema.optional() }).strict()
+  .refine(x => !x.account || !x.accountFromConfigText, 'Use one account identity source.')
+  .refine(x => [x.jobId, x.jobIdFromUrl, x.jobIdFromApplyHref].filter(Boolean).length === 1, 'Choose exactly one job ID source: a locator, page URL, or Apply link.')
+  .refine(x => x.titleEmployerFromApplyName ? !x.title && !x.employer : !!x.title && !!x.employer, 'Choose either separate title/employer locators or one observed Apply accessible name.');
+const uploadSchema = z.object({ input: locatorSchema, completed: locatorSchema.optional(), filename: locatorSchema.optional(), selectedRadio: locatorSchema.optional(), error: locatorSchema.optional() }).strict()
+  .refine(x => x.selectedRadio ? !x.completed && !x.filename : !!x.completed && !!x.filename, 'Use either a selected filename radio or both completion and filename markers.');
+const existingResumeSchema = z.object({ option: locatorSchema }).strict();
 export const adapterSchema = z.object({
   kind: z.enum(['fixture', 'observed']),
   observedAt: z.string().min(1), evidence: z.string().min(1),
-  auth: z.object({ url: z.string(), ready: locatorSchema, account: locatorSchema, loginRequired: locatorSchema, challenge: locatorSchema.optional() }).strict(),
+  auth: z.object({ url: z.string(), ready: locatorSchema, account: locatorSchema.optional(), deferAccountUntilApplication: z.literal(true).optional(), loginRequired: locatorSchema.optional(), challenge: locatorSchema.optional() }).strict()
+    .refine(x => !!x.account !== !!x.deferAccountUntilApplication, 'Choose an exact account locator or defer the exact check until Quick Apply.'),
   cookieAccept: locatorSchema.optional(),
   search: z.object({ ready: locatorSchema, query: locatorSchema, location: locatorSchema, submit: locatorSchema, results: locatorSchema,
     card: locatorSchema, cardJobIdAttribute: z.string().min(1), cardLink: locatorSchema, next: locatorSchema.optional() }).strict(),
   job: z.object({ ready: locatorSchema, identity: identitySchema, apply: locatorSchema, alreadyApplied: locatorSchema.optional() }).strict(),
-  application: z.object({ ready: locatorSchema, jobId: locatorSchema, alreadyApplied: locatorSchema.optional(),
+  application: z.object({ ready: locatorSchema, jobId: locatorSchema.optional(), jobIdFromUrl: z.literal(true).optional(), accountFromConfigText: z.literal(true).optional(), alreadyApplied: locatorSchema.optional(),
     steps: z.array(z.object({ name: z.string().min(1), ready: locatorSchema,
-      uploads: z.object({ resume: uploadSchema, coverLetter: uploadSchema }).strict().optional(),
+      uploads: z.object({ resume: uploadSchema.optional(), existingResume: existingResumeSchema.optional(), coverLetter: uploadSchema }).strict().optional(),
       fields: z.record(z.string(), locatorSchema).optional(),
       questionRegion: locatorSchema.optional(), requiredQuestions: locatorSchema.optional(),
       validationErrors: locatorSchema.optional(), next: locatorSchema,
     }).strict()).min(1),
-  }).strict(),
-  review: z.object({ ready: locatorSchema, identity: identitySchema, resume: locatorSchema, coverLetter: locatorSchema,
-    answers: z.record(z.string(), locatorSchema), applicant: z.record(z.string(), locatorSchema), submit: locatorSchema }).strict(),
-  confirmation: z.object({ ready: locatorSchema, jobId: locatorSchema, reference: locatorSchema }).strict(),
-  history: z.object({ url: z.string(), ready: locatorSchema, entry: locatorSchema, jobIdAttribute: z.string(), reference: locatorSchema }).strict(),
+  }).strict().refine(x => !!x.jobId !== !!x.jobIdFromUrl, 'Choose exactly one application job ID source.'),
+  review: z.object({ ready: locatorSchema, identity: identitySchema.refine(x => !!x.account !== !!x.accountFromConfigText, 'Review must verify the exact account.'), resume: locatorSchema, coverLetter: locatorSchema,
+    answers: z.record(z.string(), locatorSchema), applicant: z.record(z.string(), locatorSchema), submit: locatorSchema,
+    mustBeChecked: z.array(locatorSchema).optional(), mustBeUnchecked: z.array(locatorSchema).optional() }).strict(),
+  confirmation: z.object({ ready: locatorSchema, jobId: locatorSchema, reference: locatorSchema }).strict().optional(),
+  history: z.object({ url: z.string(), ready: locatorSchema, entry: locatorSchema, jobIdAttribute: z.string(), reference: locatorSchema }).strict().optional(),
 }).strict();
 
 const configSchema = z.object({
@@ -38,14 +45,14 @@ const configSchema = z.object({
   baseUrl: z.string().url().default('https://www.seek.com.au'),
   allowedOrigins: z.array(z.string().url()).min(1),
   authenticationOrigins: z.array(z.string().url()).default([]),
-  adapterPath: z.string().min(1), query: z.string().min(1), location: z.string().min(1),
+  adapterPath: z.string().min(1), query: z.string().min(1), location: z.string(),
   target: z.object({ jobId: z.string().min(1), expectedTitle: z.string().min(1), expectedEmployer: z.string().min(1) }).strict(),
   account: z.object({ expectedIdentifier: z.string().min(1), storageStatePath: z.string().min(1) }).strict(),
-  documents: z.object({ resumePath: z.string().min(1), coverLetterPath: z.string().min(1),
+  documents: z.object({ resumePath: z.string().min(1).optional(), existingResumeFilename: z.string().min(1).optional(), coverLetterPath: z.string().min(1),
     allowedExtensions: z.array(z.enum(['.doc', '.docx', '.pdf'])).min(1).default(['.doc', '.docx', '.pdf']),
     maxBytes: z.number().int().positive().max(100_000_000).default(5_000_000),
-  }).strict(),
-  applicant: z.object({ firstName: z.string().min(1), lastName: z.string().min(1), email: z.string().email(), phone: z.string().min(1) }).strict(),
+  }).strict().refine(d => !!d.resumePath !== !!d.existingResumeFilename, 'Configure exactly one of resumePath or existingResumeFilename.'),
+  applicant: z.object({ firstName: z.string().min(1), lastName: z.string().min(1), email: z.string().email(), phone: z.string().min(1) }).strict().optional(),
   answers: z.array(z.object({ id: z.string().min(1), locator: locatorSchema,
     type: z.enum(['text', 'radio', 'select', 'checkbox', 'multi-select']),
     value: z.union([z.string(), z.boolean(), z.array(z.string())]),
@@ -63,8 +70,9 @@ const configSchema = z.object({
 export type Config = z.infer<typeof configSchema>;
 export type Adapter = z.infer<typeof adapterSchema>;
 export type LocatorSpec = z.infer<typeof locatorSchema>;
-export type DocumentInfo = { filename: string; sha256: string; bytes: number; path: string };
-export type Loaded = { config: Config; adapter: Adapter; documents: { resume: DocumentInfo; coverLetter: DocumentInfo } };
+export type DocumentInfo = { source: 'local'; filename: string; sha256: string; bytes: number; path: string };
+export type ExistingResumeInfo = { source: 'seek'; filename: string };
+export type Loaded = { config: Config; adapter: Adapter; documents: { resume: DocumentInfo | ExistingResumeInfo; coverLetter: DocumentInfo } };
 export type Overrides = Partial<Pick<Config, 'query' | 'location' | 'mode' | 'headed'>>;
 
 function resolveFile(base: string, value: string): string {
@@ -79,7 +87,7 @@ export async function documentInfo(file: string, c: Config['documents']): Promis
     if (!s.size || s.size > c.maxBytes) invalid('Document is empty or exceeds the configured size limit.');
     await access(file, constants.R_OK);
     const content = await readFile(file);
-    return { filename: path.basename(file), sha256: createHash('sha256').update(content).digest('hex'), bytes: content.length, path: file };
+    return { source: 'local', filename: path.basename(file), sha256: createHash('sha256').update(content).digest('hex'), bytes: content.length, path: file };
   } catch (e) {
     if (e instanceof WorkflowError) throw e;
     invalid(`Document preflight failed (${(e as NodeJS.ErrnoException).code ?? 'unreadable'}). Check file paths, type, size and permissions.`);
@@ -106,7 +114,9 @@ export async function loadConfig(file: string, overrides: Overrides = {}): Promi
   const dir = path.dirname(path.resolve(file));
   c.adapterPath = resolveFile(dir, c.adapterPath);
   c.account.storageStatePath = resolveFile(dir, c.account.storageStatePath);
-  c.documents.resumePath = resolveFile(dir, c.documents.resumePath);
+  if (c.documents.resumePath) c.documents.resumePath = resolveFile(dir, c.documents.resumePath);
+  if (c.documents.existingResumeFilename && (/[\\/]/.test(c.documents.existingResumeFilename) || c.documents.existingResumeFilename.trim() !== c.documents.existingResumeFilename))
+    invalid('existingResumeFilename must be one exact displayed filename, not a path.');
   c.documents.coverLetterPath = resolveFile(dir, c.documents.coverLetterPath);
   c.artifactsDirectory = resolveFile(dir, c.artifactsDirectory);
   c.ledgerPath = resolveFile(dir, c.ledgerPath);
@@ -114,12 +124,24 @@ export async function loadConfig(file: string, overrides: Overrides = {}): Promi
   try { a = adapterSchema.parse(JSON.parse(await readFile(c.adapterPath, 'utf8'))); }
   catch { invalid('Missing or invalid UI adapter. Production requires a profile based on inspected SEEK UI; see docs/ADAPTERS.md.'); }
   if (c.environment === 'production' && a.kind !== 'observed') invalid('Fixture selectors cannot be used in production.');
-  for (const [url, permitted] of [[a.auth.url, origins], [a.history.url, c.allowedOrigins]] as const) {
+  if (a.auth.deferAccountUntilApplication && !a.application.accountFromConfigText)
+    invalid('Deferred account identity must be checked on Quick Apply before any upload.');
+  if (c.mode === 'submit' && (!a.confirmation || !a.history))
+    invalid('Submit mode requires observed confirmation and history mappings. This adapter is prepare-only.');
+  for (const [url, permitted] of [[a.auth.url, origins], ...(a.history ? [[a.history.url, c.allowedOrigins] as const] : [])] as const) {
     if (!permitted.includes(new URL(url, c.baseUrl).origin)) invalid('Adapter URL is outside configured origins.');
   }
-  if (a.application.steps.filter(s => s.uploads).length !== 1) invalid('Adapter must have one explicit upload step for both documents.');
+  if (a.application.steps.filter(s => s.uploads).length !== 1) invalid('Adapter must have one explicit document step.');
+  const uploads = a.application.steps.find(s => s.uploads)?.uploads;
+  if (!!uploads?.resume === !!uploads?.existingResume || !!uploads?.existingResume !== !!c.documents.existingResumeFilename)
+    invalid('Adapter résumé source must match the configured local file or existing SEEK résumé.');
   for (const answer of c.answers) if (!a.review.answers[answer.id]) invalid(`Missing review evidence for answer ${answer.id}.`);
-  for (const key of Object.keys(c.applicant)) if (!a.review.applicant[key]) invalid(`Missing review evidence for applicant field ${key}.`);
-  const [resume, coverLetter] = await Promise.all([documentInfo(c.documents.resumePath, c.documents), documentInfo(c.documents.coverLetterPath, c.documents)]);
+  for (const step of a.application.steps) for (const key of Object.keys(step.fields ?? {}))
+    if (!c.applicant || !(key in c.applicant)) invalid(`Adapter requested an unconfigured applicant field: ${key}.`);
+  for (const key of Object.keys(c.applicant ?? {})) if (!a.review.applicant[key]) invalid(`Missing review evidence for applicant field ${key}.`);
+  const [resume, coverLetter] = await Promise.all([
+    c.documents.resumePath ? documentInfo(c.documents.resumePath, c.documents) : Promise.resolve({ source: 'seek' as const, filename: c.documents.existingResumeFilename! }),
+    documentInfo(c.documents.coverLetterPath, c.documents),
+  ]);
   return { config: c, adapter: a, documents: { resume, coverLetter } };
 }

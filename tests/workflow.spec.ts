@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { readFile, rm } from 'node:fs/promises';
-import { startFixture, fixtureConfig, type Options } from './fixtures/seek-fixture.js';
+import { readFile, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { startFixture, fixtureConfig, fixtureAdapter, type Options } from './fixtures/seek-fixture.js';
 import { loadConfig, type Loaded } from '../src/config.js';
 import { runWorkflow } from '../src/reporting.js';
 import { Ledger } from '../src/submission-ledger.js';
@@ -34,6 +35,99 @@ test('prepare searches exact ID, uploads both new files despite reversed inputs,
     expect((await readFile(result.artifacts.result, 'utf8'))).not.toContain('test@example.invalid');
   });
 });
+test('name-only search clears a prefilled location and still selects the exact job', async () => {
+  await scenario({ prefilledSearchLocation: true }, async (loaded, server) => {
+    loaded.config.location = '';
+    const result = await run(loaded);
+    expect(result.status, result.message).toBe('prepared');
+    expect(server.state.searches[0]).toEqual({ query: 'QA test', location: '' });
+    expect(server.state.selectedJobs).toEqual(['94974243']);
+    expect(server.state.submissions).toBe(0);
+  });
+});
+for (const wrongApplyHref of [false, true]) test(`in-place SEEK job panel ${wrongApplyHref ? 'rejects a wrong Apply destination' : 'verifies exact Apply href and accessible identity'}`, async () => {
+  const server = await startFixture({ inlineDetail: true, wrongApplyHref });
+  const files = await fixtureConfig(server.origin);
+  try {
+    const adapter = structuredClone(fixtureAdapter);
+    adapter.search.results = { by: 'testId', value: 'job-card' };
+    const apply = { by: 'role' as const, role: 'link', value: 'Apply for QA Test Engineer at Fixture Employer' };
+    adapter.job = { ready: apply, identity: { account: { by: 'testId', value: 'account' }, jobIdFromApplyHref: apply, titleEmployerFromApplyName: apply }, apply };
+    await writeFile(path.join(files.dir, 'adapter.json'), JSON.stringify(adapter));
+    const result = await run(await loadConfig(files.file));
+    expect(result.code, result.message).toBe(wrongApplyHref ? 'TARGET_MISMATCH' : 'PREPARED');
+    expect(server.state.selectedJobs).toHaveLength(0);
+    expect(server.state.uploads).toHaveLength(wrongApplyHref ? 0 : 2);
+    expect(server.state.submissions).toBe(0);
+  } finally { await server.close(); await rm(files.dir, { recursive: true, force: true }); }
+});
+for (const [wrongAccountOnApplication, wrongAccountOnReview, label] of [
+  [false, false, 'allows prepare after exact Quick Apply and review matches'],
+  [true, false, 'blocks before uploading on Quick Apply mismatch'],
+  [false, true, 'blocks prepared result on review account mismatch'],
+] as const) test(`deferred account check ${label}`, async () => {
+  const server = await startFixture({ wrongAccountOnApplication, wrongAccountOnReview, profileOnly: true });
+  const files = await fixtureConfig(server.origin);
+  try {
+    const config = JSON.parse(await readFile(files.file, 'utf8'));
+    delete config.applicant;
+    config.answers = [];
+    await writeFile(files.file, JSON.stringify(config));
+    const adapter = structuredClone(fixtureAdapter);
+    delete adapter.auth.account;
+    adapter.auth.deferAccountUntilApplication = true;
+    adapter.application.accountFromConfigText = true;
+    delete adapter.review.identity.account;
+    adapter.review.identity.accountFromConfigText = true;
+    delete adapter.confirmation;
+    delete adapter.history;
+    adapter.application.steps[1].ready = { by: 'testId', value: 'profile' };
+    adapter.application.steps[1].next = { by: 'role', role: 'button', value: 'Continue' };
+    delete adapter.application.steps[1].fields;
+    delete adapter.application.steps[1].questionRegion;
+    await writeFile(path.join(files.dir, 'adapter.json'), JSON.stringify(adapter));
+    const result = await run(await loadConfig(files.file));
+    expect(result.code, result.message).toBe(wrongAccountOnApplication || wrongAccountOnReview ? 'ACCOUNT_MISMATCH' : 'PREPARED');
+    expect(server.state.uploads).toHaveLength(wrongAccountOnApplication ? 0 : 2);
+    expect(server.state.submissions).toBe(0);
+  } finally { await server.close(); await rm(files.dir, { recursive: true, force: true }); }
+});
+for (const [unselectedResume, mode] of [[false, 'prepare'], [false, 'submit'], [true, 'prepare']] as const) {
+  test(unselectedResume ? 'stored résumé not selected stops before uploading the cover letter' : `${mode} uses the selected SEEK résumé and unchanged profile with a local cover letter`, async () => {
+    const server = await startFixture({ existingResume: true, unselectedResume, profileOnly: true, radioCoverCompletion: true });
+    const files = await fixtureConfig(server.origin);
+    try {
+      const config = JSON.parse(await readFile(files.file, 'utf8'));
+      config.documents = { existingResumeFilename: 'Resume.docx', coverLetterPath: './Cover Letter.docx' };
+      config.mode = mode;
+      delete config.applicant;
+      config.answers = [];
+      await writeFile(files.file, JSON.stringify(config));
+      const adapter = structuredClone(fixtureAdapter);
+      adapter.application.steps[0].uploads!.existingResume = { option: { by: 'role', role: 'radio', value: 'Resume.docx' } };
+      delete adapter.application.steps[0].uploads!.resume;
+      adapter.application.steps[0].uploads!.coverLetter = { input: { by: 'label', value: 'Upload cover letter' }, selectedRadio: { by: 'testId', value: 'cover-choice' } };
+      adapter.application.steps[1].ready = { by: 'testId', value: 'profile' };
+      adapter.application.steps[1].next = { by: 'role', role: 'button', value: 'Continue' };
+      delete adapter.application.steps[1].fields;
+      delete adapter.application.steps[1].questionRegion;
+      await writeFile(path.join(files.dir, 'adapter.json'), JSON.stringify(adapter));
+      await rm(path.join(files.dir, 'Resume.docx'));
+      const loaded = await loadConfig(files.file);
+      expect(loaded.documents.resume).toEqual({ source: 'seek', filename: 'Resume.docx' });
+      const result = await run(loaded);
+      if (unselectedResume) {
+        expect(result.code).toBe('STORED_RESUME_MISMATCH');
+        expect(server.state.uploads).toHaveLength(0);
+      } else {
+        expect(result.status, result.message).toBe(mode === 'submit' ? 'submitted' : 'prepared');
+        expect(server.state.uploads.map(f => f.filename)).toEqual(['Cover Letter.docx']);
+        expect(result.documents.resume).toEqual({ source: 'seek', filename: 'Resume.docx' });
+      }
+      expect(server.state.submissions).toBe(mode === 'submit' && !unselectedResume ? 1 : 0);
+    } finally { await server.close(); await rm(files.dir, { recursive: true, force: true }); }
+  });
+}
 test('confirmed submission is durable and a new invocation cannot duplicate it', async () => {
   await scenario({}, async (loaded, server) => {
     loaded.config.mode = 'submit';

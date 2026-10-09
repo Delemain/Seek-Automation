@@ -3,9 +3,9 @@
   "baseUrl": "https://au.seek.com",
   "allowedOrigins": ["https://au.seek.com", "https://www.seek.com.au"],
   "authenticationOrigins": ["https://login.seek.com"],
-  "adapterPath": "./seek.verified.json",
-  "query": "AI Engineer SustainRecruit",
-  "location": "Sydney NSW",
+  "adapterPath": "./seek.prepare.candidate.json",
+  "query": "AI Engineer",
+  "location": "",
   "target": {
     "jobId": "94974243",
     "expectedTitle": "AI Engineer",
@@ -16,16 +16,10 @@
     "storageStatePath": "../.auth/seek.json"
   },
   "documents": {
-    "resumePath": "C:\\Maxim\\seek\\Resume.docx",
+    "existingResumeFilename": "Resume.docx",
     "coverLetterPath": "C:\\Maxim\\seek\\Cover Letter.docx",
     "allowedExtensions": [".doc", ".docx", ".pdf"],
     "maxBytes": 5000000
-  },
-  "applicant": {
-    "firstName": "REPLACE_WITH_TEST_FIRST_NAME",
-    "lastName": "REPLACE_WITH_TEST_LAST_NAME",
-    "email": "REPLACE_WITH_TEST_EMAIL@example.invalid",
-    "phone": "REPLACE_WITH_TEST_PHONE"
   },
   "answers": [],
   "mode": "prepare",

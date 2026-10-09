@@ -1,11 +1,13 @@
 import { test, expect } from '@playwright/test';
-import { mkdtemp, rm, writeFile, mkdir, chmod } from 'node:fs/promises';
+import type { Page } from '@playwright/test';
+import { mkdtemp, rm, writeFile, readFile, mkdir, chmod } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { promisify } from 'node:util';
 import { execFile } from 'node:child_process';
-import { loadConfig, documentInfo } from '../../src/config.js';
+import { loadConfig, documentInfo, adapterSchema } from '../../src/config.js';
 import { validateCdpEndpoint } from '../../src/reporting.js';
+import { jobIdFromSeekPath } from '../../src/pages/ui.js';
 import { fixtureConfig } from '../fixtures/seek-fixture.js';
 
 test('paths are relative to configuration, hashes match content, CLI values override file defaults', async () => {
@@ -15,10 +17,46 @@ test('paths are relative to configuration, hashes match content, CLI values over
     expect(l.config.query).toBe('new query'); expect(l.config.location).toBe('Melbourne VIC');
     expect(l.config.mode).toBe('submit'); expect(l.config.headed).toBe(true);
     expect(l.config.documents.resumePath).toBe(path.join(f.dir, 'Resume.docx'));
+    if (l.documents.resume.source !== 'local') throw new Error('Fixture résumé should be a local file');
     expect(l.documents.resume.sha256).toHaveLength(64);
     expect(l.documents.resume.sha256).not.toBe(l.documents.coverLetter.sha256);
     expect(l.config.maxSearchPages).toBe(5);
   } finally { await rm(f.dir, { recursive: true, force: true }); }
+});
+test('an empty search location is valid for a name-only search', async () => {
+  const f = await fixtureConfig('http://127.0.0.1:12345');
+  try { expect((await loadConfig(f.file, { location: '' })).config.location).toBe(''); }
+  finally { await rm(f.dir, { recursive: true, force: true }); }
+});
+test('observed adapter draft is deliberately not runnable in production', async () => {
+  const draft = JSON.parse(await readFile('config/seek.observed.draft.json', 'utf8'));
+  expect(draft.kind).toBe('observed-draft');
+  expect(draft.missingBeforePrepare.length).toBeGreaterThan(0);
+  expect(draft.missingBeforeSubmit.length).toBeGreaterThan(0);
+  expect(adapterSchema.safeParse(draft).success).toBe(false);
+});
+test('observed prepare candidate parses but refuses submit without success and history evidence', async () => {
+  const candidate = adapterSchema.parse(JSON.parse(await readFile('config/seek.prepare.candidate.json', 'utf8')));
+  expect(candidate.kind).toBe('observed');
+  expect(candidate.auth.deferAccountUntilApplication).toBe(true);
+  expect(candidate.confirmation).toBeUndefined();
+  expect(candidate.history).toBeUndefined();
+  const f = await fixtureConfig('http://127.0.0.1:12345');
+  try {
+    f.raw.documents = { existingResumeFilename: 'Resume.docx', coverLetterPath: './Cover Letter.docx' } as typeof f.raw.documents;
+    f.raw.answers = [];
+    delete (f.raw as Partial<typeof f.raw>).applicant;
+    await writeFile(f.file, JSON.stringify(f.raw));
+    await writeFile(path.join(f.dir, 'adapter.json'), JSON.stringify(candidate));
+    expect((await loadConfig(f.file)).config.mode).toBe('prepare');
+    await expect(loadConfig(f.file, { mode: 'submit' })).rejects.toMatchObject({ exitCode: 2 });
+  } finally { await rm(f.dir, { recursive: true, force: true }); }
+});
+test('job ID URL verification uses a whole path segment', () => {
+  const page = (url: string) => ({ url: () => url }) as Page;
+  expect(() => jobIdFromSeekPath(page('https://au.seek.com/job/94974243/apply/review'), '94974243')).not.toThrow();
+  expect(() => jobIdFromSeekPath(page('https://au.seek.com/job/949742430/apply'), '94974243')).toThrow(/approved job/);
+  expect(() => jobIdFromSeekPath(page('https://au.seek.com/AI-Engineer-jobs'), '94974243')).toThrow(/approved job/);
 });
 test('validation CLI works from another directory, without a browser or reachable server', async () => {
   const f = await fixtureConfig('http://127.0.0.1:1');

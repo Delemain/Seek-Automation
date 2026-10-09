@@ -2,15 +2,15 @@
 
 TypeScript and Playwright automation for one explicitly configured SEEK test job per invocation. No LLM, ChatGPT subscription, or AI API is used at runtime.
 
-**Current status:** the runner and local multi-step browser fixture are implemented. The real public job page is accessible and its title, employer, location and Apply link have been inspected. The authenticated production application adapter is **not verified or supplied**: this workspace has no operator login or documents. No production application has been prepared or submitted. See [Windows live setup](WINDOWS-LIVE-SETUP.md), [live adapter setup](docs/ADAPTERS.md), and [validation record](docs/VALIDATION.md).
+**Current status:** the runner and local multi-step browser fixture are implemented. The real public job page and authenticated search/document/profile/review controls have been inspected. `config/seek.prepare.candidate.json` is a **prepare-only, unverified** adapter assembled from those captures; `config/seek.observed.draft.json` remains the non-runnable structural record. No live automated prepare or submit has been run. Submit mode is blocked for the candidate because confirmation and history evidence are missing. See [Windows live setup](WINDOWS-LIVE-SETUP.md), [live adapter setup](docs/ADAPTERS.md), and [validation record](docs/VALIDATION.md).
 
-The requested test job is `94974243`, observed as **AI Engineer at SustainRecruit, Sydney NSW**. The examples now include those details and suggested search keywords; the search results have not yet been verified. The application runner always exercises search and exact-ID selection; it does not silently navigate directly to that application URL. The separate `test:live-public` command is explicitly a direct-navigation, read-only listing check, not the application scenario.
+The requested test job is `94974243`, observed as **AI Engineer at SustainRecruit, Sydney NSW**. Operator captures show it in results for a name-only `AI Engineer` search, with no location entered. The application runner always exercises search and exact-ID selection; it does not silently navigate directly to that application URL. The separate `test:live-public` command is explicitly a direct-navigation, read-only listing check, not the application scenario.
 
 ## First live check and operator setup
 
 `npm run test:live-public -- --headed` opens Chromium and checks the actual job listing without logging in or clicking Apply. It does not validate search, uploads, screening or submission. Public tests are excluded from `npm test` and save their report in `artifacts/public-report/`.
 
-The next step toward the authenticated application test is `npm run inspect:seek -- --connect-cdp http://127.0.0.1:9222` on your Windows PC, after manually signing into a separate Chrome profile and opening Quick apply. It attaches to that existing tab without requiring the unfinished adapter. Capture each application step's field structure as explained in [WINDOWS-LIVE-SETUP.md](WINDOWS-LIVE-SETUP.md). The helper does not read input values, save login state, or perform application actions automatically. Inspection output is ignored by Git; review it before sharing because labels/button captions can include account names. This setup capture is not an automated prepare or submit result.
+`npm run inspect:seek -- --connect-cdp http://127.0.0.1:9222` on your Windows PC attaches to a manually signed-in separate Chrome profile and captures control structure without the unfinished adapter. It includes hidden file-input metadata such as accepted extensions, but no file contents or field values. The supplied captures identify the stored-résumé choice, cover-letter file input, exact-job search result, and review document test IDs. Account verification, live upload/review checks and reliable submission confirmation remain. The helper does not save login state. Its optional `--page account` mode clicks only the observed profile-avatar button to capture the account menu before it closes; ordinary search/application modes never click or fill. Inspection output is ignored by Git; review it before sharing because labels/button captions can include account names. This setup capture is not an automated prepare or submit result.
 
 The initial authenticated Quick Apply capture is recorded in [OBSERVED-SEEK-STEP-01.md](docs/OBSERVED-SEEK-STEP-01.md). It confirms the native résumé and cover-letter upload controls, but does not yet establish their completed-upload indicators, the later questions, final review, or submission confirmation.
 
@@ -35,27 +35,27 @@ Copy `config/windows.example.json` to `config/local.json`. Its document paths ar
 
 ```json
 {
-  "resumePath": "C:\\Maxim\\seek\\Resume.docx",
+  "existingResumeFilename": "Resume.docx",
   "coverLetterPath": "C:\\Maxim\\seek\\Cover Letter.docx"
 }
 ```
 
-Those paths work only when the runner executes on that PC. A cloud session cannot read your C: drive. For cloud/macOS runs, copy `config/example.json` to `config/local.json`, make the documents available privately on that machine, and adjust the paths. Never commit documents or session files.
+The Windows example verifies that the exact `Resume.docx` radio is already selected in SEEK and uploads the cover letter from that PC. It does not read or re-upload the stored résumé. To upload a new local résumé instead, replace `existingResumeFilename` with `resumePath` and use a matching observed adapter; the two settings are mutually exclusive. A cloud session cannot read your C: drive. For cloud/macOS runs, copy `config/example.json` to `config/local.json`, make the documents available privately on that machine, and adjust the paths. Never commit documents or session files.
 
-Complete the exact title/employer, search keywords/location, visible account identifier, applicant details, and screening answers. Verify upload formats and size limits in the actual UI: the example's `.doc`, `.docx`, `.pdf` and 5 MB limit are configurable preflight defaults, not a verified SEEK policy. Local preflight checks regular files, readability, size, extension and SHA-256; it does not certify that a file is a valid Word/PDF document. SEEK's completed-upload state is checked separately.
+Complete the visible account identifier and any required screening answers. The examples set `"query": "AI Engineer"` and `"location": ""` to match the operator's name-only search; an empty location clears a prefilled location field. The Windows example leaves the existing SEEK Profile unchanged and omits `applicant`; configure applicant fields only when the observed form requires editing them. Verify upload formats and size limits in the actual UI: the example's `.doc`, `.docx`, `.pdf` and 5 MB limit are configurable preflight defaults, not a verified SEEK policy. Local preflight checks regular files, readability, size, extension and SHA-256; it does not certify that a file is a valid Word/PDF document. SEEK's completed-upload state is checked separately.
 
-Create `config/seek.verified.json` from **observed** UI mappings using [ADAPTERS.md](docs/ADAPTERS.md). Production rejects fixture profiles and placeholder config values. No guessed production selectors are included.
+The Windows example now points to the prepare-only candidate. Its exact account check uses the configured email visible on Quick Apply before uploading, and rechecks it on review. If the text is missing or appears more than once, it stops. Complete live prepare is still unverified; offline validation is not proof the UI will work. Production rejects fixture profiles and placeholder config values.
 
 All relative paths resolve against the **config file's directory**, including adapter, documents, session, ledger and artifacts. CLI flags override JSON; JSON overrides defaults. The CLI does not auto-load `.env` files. Credentials do not belong in configuration JSON.
 
 ## Authenticate, prepare and submit
 
-Once the observed adapter and configuration are complete:
+For a fully observed adapter with an account locator on the login page, the isolated-browser path is:
 
 ```sh
 npm run validate -- --config config/local.json
 npm run auth -- --config config/local.json
-npm run apply -- --config config/local.json --query "your approved search" --location "Sydney NSW" --mode prepare
+npm run apply -- --config config/local.json --mode prepare
 ```
 
 `validate` is offline and opens no browser. `auth` opens an isolated Chromium context, lets you complete login/MFA in the SEEK page, then asks you to press Enter in the terminal. It verifies the exact configured account before privately saving browser storage state. It does not use your ordinary Chrome profile or accept a password in chat. Login requires a graphical, interactive terminal; cloud login needs a supported interactive browser session. Noninteractive authentication fails with exit 3.
@@ -70,18 +70,18 @@ On Windows, close all Chrome windows first, then run this in PowerShell. The pro
 & "$env:ProgramFiles\Google\Chrome\Application\chrome.exe" --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --user-data-dir="$env:LOCALAPPDATA\SEEK-Automation-Chrome"
 ```
 
-Sign into SEEK via Google in that Chrome window and leave it open. After the verified production adapter and `config/local.json` exist, run:
+Sign into SEEK via Google in that Chrome window and leave it open. With the prepare-only candidate and a privately completed `config/local.json`, skip `auth`: the homepage does not expose a reliable account identifier. Run:
 
 ```powershell
-npm run auth -- --config config/local.json --connect-cdp http://127.0.0.1:9222
+npm run validate -- --config config/local.json
 npm run apply -- --config config/local.json --mode prepare --connect-cdp http://127.0.0.1:9222
 ```
 
 The endpoint is restricted to `localhost`/`127.0.0.1`; the runner opens and closes only its own tab. It does not copy, write, or upload the Chrome profile/session state, and it does not close your Chrome window. Close the dedicated Chrome window when you are finished. Chrome’s remote-debugging port grants local programs access to that dedicated profile while it is open, so do not use this mode with your everyday profile or expose port 9222 to another network.
 
-Prepare mode uploads **both new local files**, fills configured fields and answers, checks the final review, retains evidence, and closes the browser without clicking final submit. Uploads and draft saves can still change state on SEEK.
+This is the first live automated check, not a verified path yet. It checks the configured account on Quick Apply before any upload, verifies the selected stored résumé, uploads the local cover letter, leaves SEEK Profile unchanged, checks review, and closes its tab without clicking Submit. If a selector has changed or is ambiguous, it stops. Uploads and draft saves can still change state on SEEK. The isolated `auth` command deliberately refuses this deferred-account adapter; it cannot save an account-verified session from the homepage.
 
-To explicitly enable a single submission:
+Only after observed confirmation and history mappings are implemented and tested can a separate verified adapter explicitly enable a single submission. The supplied candidate refuses this command at preflight:
 
 ```sh
 npm run apply -- --config config/local.json --mode submit
@@ -106,11 +106,11 @@ An answer has a stable local ID, exact observed locator, type and value:
 
 Supported types are `text` (string), `radio` (exact option label within a unique group), `select` (exact option label), `checkbox` (boolean), and `multi-select` (array of option labels on a native multiple select). Custom controls require an explicit adapter extension; the runner never fabricates answers. Each configured answer must be encountered exactly once and have an observed review value. Unknown visible required controls stop the run. The adapter must describe custom required-question containers if the UI does not use native/ARIA required markers.
 
-This MVP supports a fixed, inspected sequence of steps, separate file inputs for résumé/cover letter, and observed completion markers. A custom file-picker-only flow, text-only cover letter, autocomplete requiring option selection, or unimplemented dynamic step must be implemented and fixture-tested after inspection. Do not substitute a stored résumé, extract document text, or guess a selector to make a run pass. Employer-hosted application forms are unsupported. Same-origin popups work; navigation to unapproved origins is blocked. Explicit authentication origins are permitted only during interactive login. CAPTCHA/human verification stops unattended runs.
+This MVP supports a fixed, inspected sequence of steps, an already selected stored résumé or a local résumé file input, a local cover-letter file input, and either separate completion markers or a checked filename radio after upload. An already populated SEEK Profile can be left unchanged by omitting `applicant` and field mappings. A custom file-picker-only flow, text-only cover letter, autocomplete requiring option selection, or unimplemented dynamic step must be implemented and fixture-tested after inspection. The stored résumé must be verified by its exact accessible filename and checked radio; the runner never substitutes a different document. Employer-hosted application forms are unsupported. Same-origin popups work; navigation to unapproved origins is blocked. Explicit authentication origins are permitted only during interactive login. CAPTCHA/human verification stops unattended runs.
 
 ## Results and exit codes
 
-Every started workflow writes a private `artifacts/<run-id>/result.json` with UTC times, operation/mode, query/location, target, hashed account reference, document filenames/hashes, completed phase, terminal status, diagnostic code, confirmation reference and evidence paths. Configuration failures occur before a run and report a diagnostic/exit code without opening the browser. The console omits credentials, document contents and raw Playwright errors.
+Every started workflow writes a private `artifacts/<run-id>/result.json` with UTC times, operation/mode, query/location, target, hashed account reference, document filenames and local-file hashes, completed phase, terminal status, diagnostic code, confirmation reference and evidence paths. A stored SEEK résumé records its source and exact filename without a content hash. Configuration failures occur before a run and report a diagnostic/exit code without opening the browser. The console omits credentials, document contents and raw Playwright errors.
 
 | Exit | Meaning |
 | --- | --- |

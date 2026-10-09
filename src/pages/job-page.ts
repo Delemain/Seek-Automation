@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import type { Loaded } from '../config.js';
 import { WorkflowError } from '../errors.js';
-import { assertions, identity, locate, unique, visible, type NavigationGuard } from './ui.js';
+import { assertions, exactConfiguredAccount, identity, jobIdFromSeekPath, locate, unique, visible, type NavigationGuard } from './ui.js';
 
 export async function startApplication(page: Page, { config: c, adapter: a }: Loaded, guard: NavigationGuard): Promise<Page> {
   const expect = assertions(page);
@@ -27,8 +27,11 @@ export async function startApplication(page: Page, { config: c, adapter: a }: Lo
       return false;
     }, { timeout: c.stepTimeoutMs }).toBe(true);
     guard.checkPage(application!);
-    await expect(await unique(application!, a.application.jobId)).toHaveText(c.target.jobId);
+    if (a.application.jobIdFromUrl) jobIdFromSeekPath(application!, c.target.jobId);
+    else await expect(await unique(application!, a.application.jobId!)).toHaveText(c.target.jobId);
     if (await visible(application!, a.application.alreadyApplied)) throw new WorkflowError('ALREADY_APPLIED', 'Site reports an existing application.', 8, 'already_applied');
+    // This is before setInputFiles or any other form mutation.
+    if (a.application.accountFromConfigText) await exactConfiguredAccount(application!, c);
     return application!;
   } finally { page.off('popup', onPopup); }
 }

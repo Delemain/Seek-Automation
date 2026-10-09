@@ -4,13 +4,19 @@ import { documentInfo } from '../config.js';
 import { WorkflowError } from '../errors.js';
 import { assertions, identity, locate, unique, visible, exact, type NavigationGuard } from './ui.js';
 
-async function upload(page: Page, spec: NonNullable<Adapter['application']['steps'][number]['uploads']>['resume'], doc: DocumentInfo, c: Config) {
+async function upload(page: Page, spec: NonNullable<Adapter['application']['steps'][number]['uploads']>['coverLetter'], doc: DocumentInfo, c: Config) {
   const expect = assertions(page);
   const now = await documentInfo(doc.path, c.documents);
   if (now.sha256 !== doc.sha256) throw new WorkflowError('DOCUMENT_CHANGED', 'A document changed after preflight. Start a new run.', 2, 'blocked');
   await (await unique(page, spec.input)).setInputFiles(doc.path);
-  await expect(await unique(page, spec.completed)).toBeVisible();
-  await exact(page, spec.filename, doc.filename);
+  if (spec.selectedRadio) {
+    const selected = await unique(page, spec.selectedRadio);
+    await expect(selected).toHaveAccessibleName(doc.filename);
+    await expect(selected).toBeChecked();
+  } else {
+    await expect(await unique(page, spec.completed!)).toBeVisible();
+    await exact(page, spec.filename!, doc.filename);
+  }
   if (await visible(page, spec.error)) throw new WorkflowError('UPLOAD_FAILED', 'Site reports an attachment upload error.');
 }
 async function fillAnswer(control: Locator, answer: Config['answers'][number]) {
@@ -39,11 +45,21 @@ export async function completeApplication(page: Page, loaded: Loaded, guard: Nav
     guard.checkPage(page);
     await expect(locate(page, step.ready)).toBeVisible();
     if (step.uploads) {
-      await upload(page, step.uploads.resume, docs.resume, c);
+      if (docs.resume.source === 'seek') {
+        try {
+          const selected = await unique(page, step.uploads.existingResume!.option);
+          await expect(selected).toHaveAccessibleName(docs.resume.filename);
+          await expect(selected).toBeChecked();
+        } catch {
+          throw new WorkflowError('STORED_RESUME_MISMATCH', 'The configured SEEK résumé is missing or not selected. Check the stored document before continuing.', 5, 'blocked');
+        }
+      } else {
+        await upload(page, step.uploads.resume!, docs.resume, c);
+      }
       await upload(page, step.uploads.coverLetter, docs.coverLetter, c);
     }
     for (const [key, spec] of Object.entries(step.fields ?? {})) {
-      const value = c.applicant[key as keyof typeof c.applicant];
+      const value = c.applicant?.[key as keyof NonNullable<typeof c.applicant>];
       if (value === undefined) throw new WorkflowError('UNKNOWN_APPLICANT_FIELD', 'Adapter requested an unconfigured applicant field.', 5, 'blocked');
       const control = await unique(page, spec);
       await control.fill(value); await expect(control).toHaveValue(value); filled.add(key);
@@ -78,7 +94,7 @@ export async function completeApplication(page: Page, loaded: Loaded, guard: Nav
     if (await visible(page, step.validationErrors)) throw new WorkflowError('FORM_VALIDATION', 'Form rejected configured inputs.');
   }
   if (used.size !== c.answers.length) throw new WorkflowError('QUESTION_NOT_FOUND', 'Not all configured screening questions were encountered.', 5, 'blocked');
-  if (filled.size !== Object.keys(c.applicant).length) throw new WorkflowError('APPLICANT_FIELDS_MISSING', 'Adapter did not fill every configured applicant field.', 5, 'blocked');
+  if (filled.size !== Object.keys(c.applicant ?? {}).length) throw new WorkflowError('APPLICANT_FIELDS_MISSING', 'Adapter did not fill every configured applicant field.', 5, 'blocked');
   await assertReview(page, loaded, guard);
 }
 export function answerText(value: string | boolean | string[]) { return Array.isArray(value) ? value.join(', ') : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : value; }
@@ -89,6 +105,8 @@ export async function assertReview(page: Page, { config: c, adapter: a, document
   await identity(page, c, a.review.identity);
   await exact(page, a.review.resume, d.resume.filename);
   await exact(page, a.review.coverLetter, d.coverLetter.filename);
+  for (const spec of a.review.mustBeChecked ?? []) await expect(await unique(page, spec)).toBeChecked();
+  for (const spec of a.review.mustBeUnchecked ?? []) await expect(await unique(page, spec)).not.toBeChecked();
   for (const answer of c.answers) await exact(page, a.review.answers[answer.id], answerText(answer.value));
-  for (const [key, value] of Object.entries(c.applicant)) await exact(page, a.review.applicant[key], value);
+  for (const [key, value] of Object.entries(c.applicant ?? {})) await exact(page, a.review.applicant[key], value);
 }
