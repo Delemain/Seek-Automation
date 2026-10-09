@@ -20,7 +20,7 @@ export async function applyFlow(loaded: Loaded, state: FlowState, ledger: Ledger
     await checkAuthentication(state.page, c, a);
   });
   await step('Search and select the exact approved job', async () => {
-    state.phase = 'search'; await search(state.page, loaded, guard);
+    state.phase = 'search'; state.page = await search(state.page, loaded, guard);
   });
   await step('Verify job and open application', async () => {
     state.phase = 'job'; state.page = await startApplication(state.page, loaded, guard); state.phase = 'application';

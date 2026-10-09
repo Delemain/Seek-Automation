@@ -3,7 +3,7 @@ import type { Loaded } from '../config.js';
 import { WorkflowError } from '../errors.js';
 import { assertions, locate, unique, visible, type NavigationGuard } from './ui.js';
 
-export async function search(page: Page, { config: c, adapter: a }: Loaded, guard: NavigationGuard) {
+export async function search(page: Page, { config: c, adapter: a }: Loaded, guard: NavigationGuard): Promise<Page> {
   const expect = assertions(page);
   await page.goto(c.baseUrl, { waitUntil: 'domcontentloaded' });
   guard.checkPage(page);
@@ -38,14 +38,25 @@ export async function search(page: Page, { config: c, adapter: a }: Loaded, guar
       } catch {
         guard.check();
         // The exact result was selected, but its client-side activation did not
-        // complete. Follow only the already verified exact job destination.
-        // The live detail page can keep its DOM readiness pending behind optional
-        // third-party content. Commit proves the browser reached the verified URL;
-        // startApplication then waits for the observed Apply control itself.
-        await page.goto(destination.href, { waitUntil: 'commit' });
-        guard.checkPage(page);
+        // complete. Use a fresh runner tab for only the already verified exact
+        // job destination; the operator's signed-in tabs are never repurposed.
+        const detail = await page.context().newPage();
+        await guard.installPage(detail);
+        try {
+          // The live detail page can keep DOM readiness pending behind optional
+          // third-party content. Commit proves it reached the verified URL;
+          // startApplication then waits for the observed Apply control itself.
+          await detail.goto(destination.href, { waitUntil: 'commit' });
+          guard.checkPage(detail);
+        } catch {
+          await detail.close().catch(() => {});
+          guard.check();
+          throw new WorkflowError('JOB_NAVIGATION_FAILED', 'SEEK did not open the verified exact job-detail page after selection.', 5, 'blocked');
+        }
+        await page.close();
+        return detail;
       }
-      return;
+      return page;
     }
     if (n + 1 === c.maxSearchPages || !await visible(page, a.search.next)) break;
     const next = await unique(page, a.search.next!);
