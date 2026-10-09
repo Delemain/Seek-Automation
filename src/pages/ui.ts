@@ -94,8 +94,23 @@ export class NavigationGuard {
   expired = false;
   constructor(private c: Config, private allowLogin = false) {}
   private async route(route: Route) {
-      if (route.request().isNavigationRequest()) {
-        const origin = new URL(route.request().url()).origin;
+      // SEEK embeds third-party measurement frames (for example DoubleClick). They
+      // are not an application redirect and must not make the runner abandon the
+      // actual SEEK page. Only a top-level document navigation can change the flow.
+      const request = route.request();
+      let topLevel = false;
+      if (request.isNavigationRequest()) {
+        try {
+          const frame = request.frame();
+          topLevel = frame === frame.page().mainFrame();
+        } catch {
+          // A popup's first navigation precedes its Playwright Frame. It is a
+          // top-level navigation and must receive the same origin protection.
+          topLevel = true;
+        }
+      }
+      if (topLevel) {
+        const origin = new URL(request.url()).origin;
         if (!this.c.allowedOrigins.includes(origin)) {
           if (this.c.authenticationOrigins.includes(origin)) {
             if (this.allowLogin) return route.continue();

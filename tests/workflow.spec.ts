@@ -45,6 +45,12 @@ test('name-only search clears a prefilled location and still selects the exact j
     expect(server.state.submissions).toBe(0);
   });
 });
+test('third-party measurement frame does not count as an external application flow', async () => {
+  await scenario({ thirdPartyFrame: true }, async loaded => {
+    const result = await run(loaded);
+    expect(result.status, result.message).toBe('prepared');
+  });
+});
 for (const wrongApplyHref of [false, true]) test(`in-place SEEK job panel ${wrongApplyHref ? 'rejects a wrong Apply destination' : 'verifies exact Apply href and accessible identity'}`, async () => {
   const server = await startFixture({ inlineDetail: true, wrongApplyHref });
   const files = await fixtureConfig(server.origin);
