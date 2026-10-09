@@ -9,10 +9,10 @@ export const locatorSchema = z.object({
   by: z.enum(['role', 'label', 'testId', 'text', 'css']), value: z.string().min(1),
   role: z.string().optional(),
 }).strict().refine(x => x.by !== 'role' || !!x.role, 'Role locators need a role');
-const identitySchema = z.object({ account: locatorSchema.optional(), accountFromConfigText: z.literal(true).optional(), jobId: locatorSchema.optional(), jobIdFromUrl: z.literal(true).optional(), jobIdFromApplyHref: locatorSchema.optional(), title: locatorSchema.optional(), employer: locatorSchema.optional(), titleEmployerFromApplyName: locatorSchema.optional() }).strict()
+const identitySchema = z.object({ account: locatorSchema.optional(), accountFromConfigText: z.literal(true).optional(), jobId: locatorSchema.optional(), jobIdFromUrl: z.literal(true).optional(), jobIdFromApplyHref: locatorSchema.optional(), title: locatorSchema.optional(), employer: locatorSchema.optional(), targetPreviouslyVerified: z.literal(true).optional(), titleEmployerFromApplyName: locatorSchema.optional() }).strict()
   .refine(x => !x.account || !x.accountFromConfigText, 'Use one account identity source.')
   .refine(x => [x.jobId, x.jobIdFromUrl, x.jobIdFromApplyHref].filter(Boolean).length === 1, 'Choose exactly one job ID source: a locator, page URL, or Apply link.')
-  .refine(x => x.titleEmployerFromApplyName ? !x.title && !x.employer : !!x.title && !!x.employer, 'Choose either separate title/employer locators or one observed Apply accessible name.');
+  .refine(x => x.titleEmployerFromApplyName ? !x.title && !x.employer && !x.targetPreviouslyVerified : !!x.title && (!!x.employer || !!x.targetPreviouslyVerified), 'Choose an Apply name, separate title/employer locators, or a title whose employer was verified earlier.');
 const uploadSchema = z.object({ input: locatorSchema, completed: locatorSchema.optional(), filename: locatorSchema.optional(), selectedRadio: locatorSchema.optional(), error: locatorSchema.optional() }).strict()
   .refine(x => x.selectedRadio ? !x.completed && !x.filename : !!x.completed && !!x.filename, 'Use either a selected filename radio or both completion and filename markers.');
 const existingResumeSchema = z.object({ option: locatorSchema }).strict();
@@ -23,7 +23,7 @@ export const adapterSchema = z.object({
     .refine(x => !!x.account !== !!x.deferAccountUntilApplication, 'Choose an exact account locator or defer the exact check until Quick Apply.'),
   cookieAccept: locatorSchema.optional(),
   search: z.object({ ready: locatorSchema, query: locatorSchema, location: locatorSchema, submit: locatorSchema, results: locatorSchema,
-    card: locatorSchema, cardJobIdAttribute: z.string().min(1), cardLink: locatorSchema, next: locatorSchema.optional() }).strict(),
+    card: locatorSchema, cardJobIdAttribute: z.string().min(1), cardLink: locatorSchema, cardTitle: locatorSchema.optional(), cardEmployer: locatorSchema.optional(), next: locatorSchema.optional() }).strict(),
   job: z.object({ ready: locatorSchema, identity: identitySchema, apply: locatorSchema, alreadyApplied: locatorSchema.optional() }).strict(),
   application: z.object({ ready: locatorSchema, jobId: locatorSchema.optional(), jobIdFromUrl: z.literal(true).optional(), accountFromConfigText: z.literal(true).optional(), alreadyApplied: locatorSchema.optional(),
     steps: z.array(z.object({ name: z.string().min(1), ready: locatorSchema,

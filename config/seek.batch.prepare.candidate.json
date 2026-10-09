@@ -1,0 +1,72 @@
+{
+  "kind": "observed",
+  "observedAt": "2026-10-09",
+  "evidence": "Observed signed-in SEEK result cards expose jobTitle/jobCompany markers; batch preparation reuses the successfully live-tested Quick Apply, profile, and review controls. It is prepare-only and skips cards marked Applied.",
+  "auth": {
+    "url": "/",
+    "ready": { "by": "css", "value": "button[data-automation='account name']" },
+    "deferAccountUntilApplication": true
+  },
+  "search": {
+    "ready": { "by": "css", "value": "#keywords-input" },
+    "query": { "by": "css", "value": "#keywords-input" },
+    "location": { "by": "css", "value": "#SearchBar__Where" },
+    "submit": { "by": "role", "role": "button", "value": "Submit search" },
+    "results": { "by": "testId", "value": "job-card" },
+    "card": { "by": "testId", "value": "job-card" },
+    "cardJobIdAttribute": "data-job-id",
+    "cardLink": { "by": "testId", "value": "job-card-title" },
+    "cardTitle": { "by": "css", "value": "[data-automation='jobTitle']" },
+    "cardEmployer": { "by": "css", "value": "[data-automation='jobCompany']" }
+  },
+  "job": {
+    "ready": { "by": "css", "value": "a[data-automation='job-detail-apply']" },
+    "identity": {
+      "jobIdFromUrl": true,
+      "title": { "by": "css", "value": "h1[data-automation='job-detail-title']" },
+      "employer": { "by": "css", "value": "span[data-automation='advertiser-name']" }
+    },
+    "apply": { "by": "css", "value": "a[data-automation='job-detail-apply']" }
+  },
+  "application": {
+    "ready": { "by": "testId", "value": "continue-button" },
+    "jobIdFromUrl": true,
+    "accountFromConfigText": true,
+    "steps": [
+      {
+        "name": "Choose documents",
+        "ready": { "by": "testId", "value": "continue-button" },
+        "uploads": {
+          "existingResume": { "option": { "by": "role", "role": "radio", "value": "Resume.docx" } },
+          "coverLetter": {
+            "input": { "by": "css", "value": "#coverLetter-fileFile" },
+            "selectedRadio": { "by": "css", "value": "input[type='radio'][data-testid='coverLetter-method-upload']" }
+          }
+        },
+        "next": { "by": "testId", "value": "continue-button" }
+      },
+      {
+        "name": "Keep SEEK Profile unchanged",
+        "ready": { "by": "testId", "value": "add-skills" },
+        "next": { "by": "testId", "value": "continue-button" }
+      }
+    ]
+  },
+  "review": {
+    "ready": { "by": "testId", "value": "review-submit-application" },
+    "identity": {
+      "accountFromConfigText": true,
+      "jobIdFromUrl": true,
+      "title": { "by": "css", "value": "h1" },
+      "targetPreviouslyVerified": true
+    },
+    "resume": { "by": "testId", "value": "resume-upload" },
+    "coverLetter": { "by": "testId", "value": "cover-letter-upload" },
+    "answers": {},
+    "applicant": {},
+    "submit": { "by": "testId", "value": "review-submit-application" },
+    "mustBeChecked": [
+      { "by": "testId", "value": "profile-visibility-field2-radio-group-standard" }
+    ]
+  }
+}

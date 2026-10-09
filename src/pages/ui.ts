@@ -85,7 +85,7 @@ export async function identity(page: Page, c: Config, specs: Adapter['review']['
       await assertions(page)(await unique(page, specs.titleEmployerFromApplyName)).toHaveAccessibleName(`Apply for ${c.target.expectedTitle} at ${c.target.expectedEmployer}`);
     else {
       await exact(page, specs.title!, c.target.expectedTitle);
-      await exact(page, specs.employer!, c.target.expectedEmployer);
+      if (specs.employer) await exact(page, specs.employer, c.target.expectedEmployer);
     }
   } catch { throw new WorkflowError('TARGET_MISMATCH', 'Job ID, title or employer does not match the approved target.', 4, 'blocked'); }
 }

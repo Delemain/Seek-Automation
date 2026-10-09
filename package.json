@@ -9,6 +9,7 @@
   "scripts": {
     "auth": "tsx src/cli.ts auth",
     "apply": "tsx src/cli.ts apply",
+    "batch:prepare": "tsx src/cli.ts batch-prepare",
     "validate": "tsx src/cli.ts validate",
     "reconcile": "tsx src/cli.ts reconcile",
     "typecheck": "tsc --noEmit",

@@ -2,7 +2,7 @@
 
 TypeScript and Playwright automation for one explicitly configured SEEK test job per invocation. No LLM, ChatGPT subscription, or AI API is used at runtime.
 
-**Current status:** the runner and local multi-step browser fixture are implemented. The real public job page and authenticated search/document/profile/review controls have been inspected. `config/seek.prepare.candidate.json` is a **prepare-only, unverified** adapter assembled from those captures; `config/seek.observed.draft.json` remains the non-runnable structural record. No live automated prepare or submit has been run. Submit mode is blocked for the candidate because confirmation and history evidence are missing. See [Windows live setup](WINDOWS-LIVE-SETUP.md), [live adapter setup](docs/ADAPTERS.md), and [validation record](docs/VALIDATION.md).
+**Current status:** the runner and local multi-step browser fixture are implemented. A supervised live prepare for job `94974243` reached review and verified the selected résumé, uploaded cover letter, unchanged SEEK profile and Standard visibility; it did not submit. `config/seek.prepare.candidate.json` remains prepare-only, and `config/seek.observed.draft.json` remains the non-runnable structural record. Submit mode is blocked because confirmation and history evidence are missing. See [Windows live setup](WINDOWS-LIVE-SETUP.md), [live adapter setup](docs/ADAPTERS.md), and [validation record](docs/VALIDATION.md).
 
 The requested test job is `94974243`, observed as **AI Engineer at SustainRecruit, Sydney NSW**. Operator captures show it in results for a name-only `AI Engineer` search, with no location entered. The application runner always exercises search and exact-ID selection; it does not silently navigate directly to that application URL. The separate `test:live-public` command is explicitly a direct-navigation, read-only listing check, not the application scenario.
 
@@ -80,6 +80,18 @@ npm run apply -- --config config/local.json --mode prepare --connect-cdp http://
 The endpoint is restricted to `localhost`/`127.0.0.1`; the runner opens and closes only its own tab. It does not copy, write, or upload the Chrome profile/session state, and it does not close your Chrome window. Close the dedicated Chrome window when you are finished. Chrome’s remote-debugging port grants local programs access to that dedicated profile while it is open, so do not use this mode with your everyday profile or expose port 9222 to another network.
 
 This is the first live automated check, not a verified path yet. It checks the configured account on Quick Apply before any upload, verifies the selected stored résumé, uploads the local cover letter, leaves SEEK Profile unchanged, checks review, and closes its tab without clicking Submit. If a selector has changed or is ambiguous, it stops. Uploads and draft saves can still change state on SEEK. The isolated `auth` command deliberately refuses this deferred-account adapter; it cannot save an account-verified session from the homepage.
+
+### Batch prepare five visible results
+
+`batch-prepare` is a separate, supervised command. It searches for the configured query, lists up to five visible result cards with their title and employer, and skips a card only when its visible text explicitly says `Applied`. It does **not** infer application history from the absence of that label. It requires exactly five eligible visible cards and the exact terminal response `PREPARE 5` before opening five runner tabs. It then prepares each matching Quick Apply form sequentially, closes the runner tabs, and prints the jobs that reached review. It never clicks Submit.
+
+With the dedicated signed-in Chrome profile still open, run:
+
+```powershell
+npm run batch:prepare -- --config config/local.json --connect-cdp http://127.0.0.1:9222 --query "AI Engineer" --location ""
+```
+
+The command uses `config/seek.batch.prepare.candidate.json` by default. Each job must match the observed SEEK document/profile/review shape. A job with an external form, an account mismatch, an explicit Applied marker, changed controls, or additional required questions is skipped; it is not submitted or retried. Preparing a job can still upload the cover letter and create/update a draft. Its private batch result is saved under `artifacts/batch-<run-id>/batch-result.json`.
 
 Only after observed confirmation and history mappings are implemented and tested can a separate verified adapter explicitly enable a single submission. The supplied candidate refuses this command at preflight:
 
