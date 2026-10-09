@@ -6,6 +6,7 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { adapterSchema, type Adapter, type Loaded } from './config.js';
 import { WorkflowError } from './errors.js';
 import { atomicJson } from './submission-ledger.js';
+import { RunHistory, type RunHistoryEntry } from './run-history.js';
 import { validateCdpEndpoint } from './reporting.js';
 import { checkAuthentication, configureContext, locate, unique, visible, NavigationGuard } from './pages/ui.js';
 import { startApplication } from './pages/job-page.js';
@@ -13,7 +14,7 @@ import { completeApplication } from './pages/application-page.js';
 
 export type BatchCandidate = { jobId: string; title: string; employer: string; url: string };
 export type BatchItem = BatchCandidate & { status: 'ready' | 'skipped'; code?: string; message?: string };
-export type BatchResult = { runId: string; query: string; location: string; candidates: BatchItem[]; artifact: string };
+export type BatchResult = { runId: string; query: string; location: string; candidates: BatchItem[]; artifact: string; history: string };
 
 export async function loadBatchAdapter(file: string): Promise<Adapter> {
   try {
@@ -71,27 +72,32 @@ export async function confirmBatch(candidates: BatchCandidate[]): Promise<boolea
 
 export async function runBatchPrepare(loaded: Loaded, batchAdapter: Adapter, cdpEndpoint: string, confirm: (candidates: BatchCandidate[]) => Promise<boolean> = confirmBatch): Promise<BatchResult> {
   if (loaded.config.mode !== 'prepare') throw new WorkflowError('BATCH_PREPARE_ONLY', 'Batch workflow supports prepare mode only; it never submits.', 2, 'blocked');
-  const endpoint = validateCdpEndpoint(cdpEndpoint);
-  let browser;
-  try { browser = await chromium.connectOverCDP(endpoint); }
-  catch { throw new WorkflowError('CDP_CONNECTION_FAILED', 'Cannot connect to the dedicated local Chrome profile. Start it with port 9222 and sign in first.', 3, 'blocked'); }
-  const context = browser.contexts()[0] as BrowserContext | undefined;
-  if (!context) throw new WorkflowError('CDP_CONTEXT_MISSING', 'The dedicated Chrome profile has no browser context.', 3, 'blocked');
-  configureContext(context, loaded.config.stepTimeoutMs);
-  const guard = new NavigationGuard(loaded.config);
   const runId = randomUUID();
   const directory = path.join(loaded.config.artifactsDirectory, `batch-${runId}`);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const artifact = path.join(directory, 'batch-result.json');
-  const result: BatchResult = { runId, query: loaded.config.query, location: loaded.config.location, candidates: [], artifact };
+  const history = new RunHistory(loaded.config.runHistoryPath);
+  const result: BatchResult = { runId, query: loaded.config.query, location: loaded.config.location, candidates: [], artifact, history: history.path };
+  const entry: RunHistoryEntry = { runId, requestedAt: new Date().toISOString(), request: { command: 'batch-prepare', searchText: loaded.config.query, location: loaded.config.location, limit: 5 }, foundJobs: [], jobs: [], status: 'running' };
   let discoveryPage: Page | undefined;
   const pages: Array<{ candidate: BatchCandidate; page: Page }> = [];
   try {
+    await history.acquire();
+    await history.append(entry);
+    const endpoint = validateCdpEndpoint(cdpEndpoint);
+    let browser;
+    try { browser = await chromium.connectOverCDP(endpoint); }
+    catch { throw new WorkflowError('CDP_CONNECTION_FAILED', 'Cannot connect to the dedicated local Chrome profile. Start it with port 9222 and sign in first.', 3, 'blocked'); }
+    const context = browser.contexts()[0] as BrowserContext | undefined;
+    if (!context) throw new WorkflowError('CDP_CONTEXT_MISSING', 'The dedicated Chrome profile has no browser context.', 3, 'blocked');
+    configureContext(context, loaded.config.stepTimeoutMs);
+    const guard = new NavigationGuard(loaded.config);
     discoveryPage = await context.newPage();
     await guard.installPage(discoveryPage);
     const candidates = await discoverBatchCandidates(discoveryPage, loaded, batchAdapter, guard, 5);
     console.log('Found jobs without an explicit Applied marker:');
     for (const [index, candidate] of candidates.entries()) console.log(`${index + 1}. ${candidate.title} — ${candidate.employer} (${candidate.jobId})`);
+    await history.update(runId, record => { record.foundJobs = candidates.map(candidate => ({ jobId: candidate.jobId, title: candidate.title, employer: candidate.employer, seekUrl: candidate.url })); });
     if (candidates.length !== 5) throw new WorkflowError('BATCH_INSUFFICIENT_CANDIDATES', `Found ${candidates.length} eligible visible jobs; five are required before batch prepare starts.`, 4, 'blocked');
     if (!await confirm(candidates)) throw new WorkflowError('BATCH_CANCELLED', 'Batch preparation was cancelled. No documents were uploaded.', 0, 'blocked');
     for (const candidate of candidates) {
@@ -117,11 +123,23 @@ export async function runBatchPrepare(loaded: Loaded, batchAdapter: Adapter, cdp
         if (active !== entry.page) await entry.page.close().catch(() => {});
         await active.close().catch(() => {});
       }
+      await history.update(runId, record => { record.jobs = result.candidates.map(item => ({ jobId: item.jobId, title: item.title, employer: item.employer, seekUrl: item.url, status: item.status === 'ready' ? 'ready_to_submit' : 'skipped', ...(item.code ? { reason: { code: item.code, message: item.message! } } : {}) })); });
     }
+    await history.update(runId, record => { record.status = 'completed'; record.completedAt = new Date().toISOString(); });
+  } catch (error) {
+    const e = error instanceof WorkflowError ? error : new WorkflowError('WORKFLOW_FAILED', 'Batch workflow failed before completion.');
+    await history.update(runId, record => {
+      record.jobs = result.candidates.map(item => ({ jobId: item.jobId, title: item.title, employer: item.employer, seekUrl: item.url, status: item.status === 'ready' ? 'ready_to_submit' : 'skipped', ...(item.code ? { reason: { code: item.code, message: item.message! } } : {}) }));
+      record.status = e.code === 'BATCH_CANCELLED' ? 'cancelled' : 'failed';
+      record.failure = { code: e.code, message: e.message };
+      record.completedAt = new Date().toISOString();
+    }).catch(() => {});
+    throw e;
   } finally {
     await discoveryPage?.close().catch(() => {});
     for (const { page } of pages) await page.close().catch(() => {});
     await atomicJson(artifact, result);
+    await history.release().catch(() => {});
   }
   console.log('Ready to submit for jobs:');
   for (const item of result.candidates.filter(item => item.status === 'ready')) console.log(`- ${item.title} — ${item.employer} (${item.jobId})`);

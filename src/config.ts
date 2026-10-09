@@ -64,7 +64,7 @@ const configSchema = z.object({
   maxSearchPages: z.number().int().min(1).max(100).default(5),
   stepTimeoutMs: z.number().int().min(100).max(120000).default(15000),
   runTimeoutMs: z.number().int().min(1000).max(1800000).default(180000),
-  artifactsDirectory: z.string().default('../artifacts'), ledgerPath: z.string().default('../private-state/submissions'),
+  artifactsDirectory: z.string().default('../artifacts'), ledgerPath: z.string().default('../private-state/submissions'), runHistoryPath: z.string().default('../private-state/run-history.json'),
   retainSuccessEvidence: z.boolean().default(false),
 }).strict();
 export type Config = z.infer<typeof configSchema>;
@@ -120,6 +120,7 @@ export async function loadConfig(file: string, overrides: Overrides = {}): Promi
   c.documents.coverLetterPath = resolveFile(dir, c.documents.coverLetterPath);
   c.artifactsDirectory = resolveFile(dir, c.artifactsDirectory);
   c.ledgerPath = resolveFile(dir, c.ledgerPath);
+  c.runHistoryPath = resolveFile(dir, c.runHistoryPath);
   let a: Adapter;
   try { a = adapterSchema.parse(JSON.parse(await readFile(c.adapterPath, 'utf8'))); }
   catch { invalid('Missing or invalid UI adapter. Production requires a profile based on inspected SEEK UI; see docs/ADAPTERS.md.'); }

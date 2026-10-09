@@ -93,6 +93,8 @@ npm run batch:prepare -- "AI Engineer" --config config/local.json --connect-cdp 
 
 The quoted positional value is the exact text entered into the SEEK search bar. If it is omitted, the command uses the configured query; `--query` remains available for scripts. The command uses `config/seek.batch.prepare.candidate.json` by default. A job is marked ready only after its Apply control reaches the observed **SEEK Quick Apply** form on an allowed SEEK origin, with the exact job ID and configured account verified before upload. An external form, a same-origin non-Quick-Apply flow, an account mismatch, an explicit Applied marker, changed controls, or additional required questions is skipped; it is not submitted or retried. Preparing a job can still upload the cover letter and create/update a draft. Its private batch result is saved under `artifacts/batch-<run-id>/batch-result.json` without tracking query strings or fragments.
 
+Each batch invocation also appends a record to the private `private-state/run-history.json` by default (configure `runHistoryPath` in `config/local.json` to move it). A record contains the request timestamp/search text/location, the discovered title/employer/SEEK-link list, and each processed job's `ready_to_submit` or `skipped` status. Skipped jobs include their diagnostic code and reason; cancelled and failed invocations also retain their terminal reason. The file uses atomic updates and a short-lived lock, so do not edit it while a batch is running. It contains your job-search activity and must remain ignored by Git.
+
 Only after observed confirmation and history mappings are implemented and tested can a separate verified adapter explicitly enable a single submission. The supplied candidate refuses this command at preflight:
 
 ```sh
@@ -161,4 +163,4 @@ Reset is separate from running a test: after the approved SEEK operator verifies
 
 ## Defaults
 
-Defaults: production environment, `https://www.seek.com.au`, prepare mode, headed Chromium, 5 search pages, 15-second step timeout, 180-second run deadline, 5,000,000-byte document limit, DOC/DOCX/PDF extensions, no screening answers, no authentication-origin exceptions, and no success evidence retention. Paths default to `../artifacts` and `../private-state/submissions` relative to the config. Required inputs are validated before execution; there is no fallback account, job, answer or live adapter.
+Defaults: production environment, `https://www.seek.com.au`, prepare mode, headed Chromium, 5 search pages, 15-second step timeout, 180-second run deadline, 5,000,000-byte document limit, DOC/DOCX/PDF extensions, no screening answers, no authentication-origin exceptions, and no success evidence retention. Paths default to `../artifacts`, `../private-state/submissions`, and `../private-state/run-history.json` relative to the config. Required inputs are validated before execution; there is no fallback account, job, answer or live adapter.
