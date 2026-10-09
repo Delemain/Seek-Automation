@@ -14,8 +14,19 @@ import { completeApplication } from './pages/application-page.js';
 import type { ScreeningPageAudit } from './pages/screening-audit.js';
 
 export type BatchCandidate = { jobId: string; title: string; employer: string; url: string };
-export type BatchItem = BatchCandidate & { status: 'ready' | 'skipped'; code?: string; message?: string; screeningAudit: ScreeningPageAudit[] };
-export type BatchResult = { runId: string; query: string; location: string; candidates: BatchItem[]; artifact: string; history: string };
+export type BatchItem = BatchCandidate & {
+  status: 'ready' | 'skipped'; code?: string; message?: string; screeningAudit: ScreeningPageAudit[];
+  submissionPlan: string | null; submitted: false;
+};
+export type BatchResult = {
+  runId: string; query: string; location: string; submissionIntervalSeconds: number;
+  candidates: BatchItem[]; artifact: string; history: string;
+};
+export type BatchPrepareOptions = {
+  submissionIntervalSeconds?: number;
+  now?: () => Date;
+  wait?: (milliseconds: number) => Promise<void>;
+};
 
 export async function loadBatchAdapter(file: string): Promise<Adapter> {
   try {
@@ -71,17 +82,50 @@ export async function confirmBatch(candidates: BatchCandidate[]): Promise<boolea
   } finally { terminal.close(); }
 }
 
-export async function runBatchPrepare(loaded: Loaded, batchAdapter: Adapter, cdpEndpoint: string, confirm: (candidates: BatchCandidate[]) => Promise<boolean> = confirmBatch): Promise<BatchResult> {
+function historyJob(item: BatchItem) {
+  return {
+    jobId: item.jobId, title: item.title, employer: item.employer, seekUrl: item.url,
+    status: item.status === 'ready' ? 'ready_to_submit' as const : 'skipped' as const,
+    screeningAudit: item.screeningAudit, submissionPlan: item.submissionPlan, submitted: false as const,
+    ...(item.code ? { reason: { code: item.code, message: item.message! } } : {}),
+  };
+}
+
+/** Assign manual submission times only. This never presses or enables Submit. */
+export async function planReadySubmissions(candidates: BatchItem[], intervalSeconds: number,
+  persist: () => Promise<void>, now: () => Date = () => new Date(), wait: (milliseconds: number) => Promise<void> = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))) {
+  const ready = candidates.filter(candidate => candidate.status === 'ready');
+  for (const [index, candidate] of ready.entries()) {
+    candidate.submissionPlan = now().toISOString();
+    candidate.submitted = false;
+    await persist();
+    console.log(`Submission plan (${index + 1}/${ready.length}): ${candidate.title} — ${candidate.employer} at ${candidate.submissionPlan}`);
+    if (index + 1 < ready.length) {
+      console.log(`Waiting ${intervalSeconds} second(s) before recording the next submission plan. No application will be submitted.`);
+      await wait(intervalSeconds * 1000);
+    }
+  }
+}
+
+export async function runBatchPrepare(loaded: Loaded, batchAdapter: Adapter, cdpEndpoint: string, confirm: (candidates: BatchCandidate[]) => Promise<boolean> = confirmBatch, options: BatchPrepareOptions = {}): Promise<BatchResult> {
   if (loaded.config.mode !== 'prepare') throw new WorkflowError('BATCH_PREPARE_ONLY', 'Batch workflow supports prepare mode only; it never submits.', 2, 'blocked');
+  const intervalSeconds = options.submissionIntervalSeconds ?? 0;
+  if (!Number.isSafeInteger(intervalSeconds) || intervalSeconds < 0)
+    throw new WorkflowError('INVALID_SUBMISSION_INTERVAL', 'Submission interval must be a whole number of seconds greater than or equal to zero.', 2, 'blocked');
   const runId = randomUUID();
   const directory = path.join(loaded.config.artifactsDirectory, `batch-${runId}`);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const artifact = path.join(directory, 'batch-result.json');
   const history = new RunHistory(loaded.config.runHistoryPath);
-  const result: BatchResult = { runId, query: loaded.config.query, location: loaded.config.location, candidates: [], artifact, history: history.path };
-  const entry: RunHistoryEntry = { runId, requestedAt: new Date().toISOString(), request: { command: 'batch-prepare', searchText: loaded.config.query, location: loaded.config.location, limit: 5 }, foundJobs: [], jobs: [], status: 'running' };
+  const result: BatchResult = { runId, query: loaded.config.query, location: loaded.config.location, submissionIntervalSeconds: intervalSeconds, candidates: [], artifact, history: history.path };
+  const entry: RunHistoryEntry = { runId, requestedAt: new Date().toISOString(), request: { command: 'batch-prepare', searchText: loaded.config.query, location: loaded.config.location, limit: 5, submissionIntervalSeconds: intervalSeconds }, foundJobs: [], jobs: [], status: 'running' };
   let discoveryPage: Page | undefined;
   const pages: Array<{ candidate: BatchCandidate; page: Page }> = [];
+  const readyPages: Page[] = [];
+  const persistResults = async () => {
+    await history.update(runId, record => { record.jobs = result.candidates.map(historyJob); });
+    await atomicJson(artifact, result);
+  };
   try {
     await history.acquire();
     await history.append(entry);
@@ -117,21 +161,23 @@ export async function runBatchPrepare(loaded: Loaded, batchAdapter: Adapter, cdp
         await checkAuthentication(active, job.config, job.adapter);
         active = await startApplication(active, job, guard);
         await completeApplication(active, job, guard, true, screeningAudit);
-        result.candidates.push({ ...entry.candidate, status: 'ready', screeningAudit });
+        result.candidates.push({ ...entry.candidate, status: 'ready', screeningAudit, submissionPlan: null, submitted: false });
+        readyPages.push(active);
       } catch (error) {
         const e = error instanceof WorkflowError ? error : new WorkflowError('WORKFLOW_FAILED', 'Form did not match the observed batch workflow.');
-        result.candidates.push({ ...entry.candidate, status: 'skipped', code: e.code, message: e.message, screeningAudit });
+        result.candidates.push({ ...entry.candidate, status: 'skipped', code: e.code, message: e.message, screeningAudit, submissionPlan: null, submitted: false });
       } finally {
         if (active !== entry.page) await entry.page.close().catch(() => {});
-        await active.close().catch(() => {});
+        if (!readyPages.includes(active)) await active.close().catch(() => {});
       }
-      await history.update(runId, record => { record.jobs = result.candidates.map(item => ({ jobId: item.jobId, title: item.title, employer: item.employer, seekUrl: item.url, status: item.status === 'ready' ? 'ready_to_submit' : 'skipped', screeningAudit: item.screeningAudit, ...(item.code ? { reason: { code: item.code, message: item.message! } } : {}) })); });
+      await persistResults();
     }
+    await planReadySubmissions(result.candidates, intervalSeconds, persistResults, options.now, options.wait);
     await history.update(runId, record => { record.status = 'completed'; record.completedAt = new Date().toISOString(); });
   } catch (error) {
     const e = error instanceof WorkflowError ? error : new WorkflowError('WORKFLOW_FAILED', 'Batch workflow failed before completion.');
     await history.update(runId, record => {
-      record.jobs = result.candidates.map(item => ({ jobId: item.jobId, title: item.title, employer: item.employer, seekUrl: item.url, status: item.status === 'ready' ? 'ready_to_submit' : 'skipped', screeningAudit: item.screeningAudit, ...(item.code ? { reason: { code: item.code, message: item.message! } } : {}) }));
+      record.jobs = result.candidates.map(historyJob);
       record.status = e.code === 'BATCH_CANCELLED' ? 'cancelled' : 'failed';
       record.failure = { code: e.code, message: e.message };
       record.completedAt = new Date().toISOString();
@@ -140,6 +186,7 @@ export async function runBatchPrepare(loaded: Loaded, batchAdapter: Adapter, cdp
   } finally {
     await discoveryPage?.close().catch(() => {});
     for (const { page } of pages) await page.close().catch(() => {});
+    for (const page of readyPages) await page.close().catch(() => {});
     await atomicJson(artifact, result);
     await history.release().catch(() => {});
   }

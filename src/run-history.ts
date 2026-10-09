@@ -4,10 +4,17 @@ import { atomicJson } from './submission-ledger.js';
 import { WorkflowError } from './errors.js';
 import type { ScreeningPageAudit } from './pages/screening-audit.js';
 
-export type RunHistoryJob = { jobId: string; title: string; employer: string; seekUrl: string; status: 'ready_to_submit' | 'skipped'; reason?: { code: string; message: string }; screeningAudit?: ScreeningPageAudit[] };
+export type RunHistoryJob = {
+  jobId: string; title: string; employer: string; seekUrl: string; status: 'ready_to_submit' | 'skipped';
+  reason?: { code: string; message: string }; screeningAudit?: ScreeningPageAudit[];
+  /** ISO time at which an operator may manually submit this prepared draft; null for skipped jobs. */
+  submissionPlan?: string | null;
+  /** Batch preparation never submits; retained for an explicit operator audit trail. */
+  submitted: false;
+};
 export type RunHistoryEntry = {
   runId: string; requestedAt: string; completedAt?: string;
-  request: { command: 'batch-prepare'; searchText: string; location: string; limit: number }
+  request: { command: 'batch-prepare'; searchText: string; location: string; limit: number; submissionIntervalSeconds: number }
     | { command: 'prepare-one'; jobId: string; title: string; employer: string };
   foundJobs: Array<{ jobId: string; title: string; employer: string; seekUrl: string }>;
   jobs: RunHistoryJob[];

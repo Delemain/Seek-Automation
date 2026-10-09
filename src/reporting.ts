@@ -130,6 +130,7 @@ export async function runWorkflow(loaded: Loaded, operation: 'apply' | 'reconcil
         record.jobs = [{ jobId: c.target.jobId, title: c.target.expectedTitle, employer: c.target.expectedEmployer,
           seekUrl: new URL(`/job/${encodeURIComponent(c.target.jobId)}`, c.baseUrl).href,
           status: result.status === 'prepared' ? 'ready_to_submit' : 'skipped', screeningAudit: result.screeningAudit,
+          submissionPlan: null, submitted: false,
           ...(result.status === 'prepared' ? {} : { reason: { code: result.code, message: result.message } }) }];
         record.status = result.status === 'prepared' ? 'completed' : 'failed';
         if (result.status !== 'prepared') record.failure = { code: result.code, message: result.message };

@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import path from 'node:path';
 import os from 'node:os';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { hasExplicitAppliedMarker, loadBatchAdapter } from '../../src/batch.js';
+import { hasExplicitAppliedMarker, loadBatchAdapter, planReadySubmissions, type BatchItem } from '../../src/batch.js';
 import { RunHistory } from '../../src/run-history.js';
 
 test('batch discovery skips only an explicit Applied marker', () => {
@@ -18,21 +18,38 @@ test('observed batch adapter includes title and employer card mappings', async (
   expect(adapter.review.identity.targetPreviouslyVerified).toBe(true);
 });
 
+test('batch submission plans are sequential, persisted, and never submitted', async () => {
+  const candidates: BatchItem[] = [
+    { jobId: 'one', title: 'First', employer: 'A', url: 'https://au.seek.com/job/one', status: 'ready', screeningAudit: [], submissionPlan: null, submitted: false },
+    { jobId: 'two', title: 'Skipped', employer: 'B', url: 'https://au.seek.com/job/two', status: 'skipped', screeningAudit: [], submissionPlan: null, submitted: false },
+    { jobId: 'three', title: 'Second', employer: 'C', url: 'https://au.seek.com/job/three', status: 'ready', screeningAudit: [], submissionPlan: null, submitted: false },
+  ];
+  const moments = [new Date('2026-10-09T10:00:00.000Z'), new Date('2026-10-09T10:01:30.000Z')];
+  const waits: number[] = [], snapshots: BatchItem[][] = [];
+  await planReadySubmissions(candidates, 90, async () => { snapshots.push(structuredClone(candidates)); }, () => moments.shift()!, async milliseconds => { waits.push(milliseconds); });
+  expect(waits).toEqual([90000]);
+  expect(snapshots).toHaveLength(2);
+  expect(candidates.map(item => item.submissionPlan)).toEqual(['2026-10-09T10:00:00.000Z', null, '2026-10-09T10:01:30.000Z']);
+  expect(candidates.every(item => item.submitted === false)).toBe(true);
+});
+
 test('run history appends a request and atomically records its job outcome', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'seek-history-'));
   const history = new RunHistory(path.join(directory, 'history.json'));
   try {
     await history.acquire();
-    await history.append({ runId: 'run-1', requestedAt: '2026-10-09T00:00:00.000Z', request: { command: 'batch-prepare', searchText: 'AI Engineer', location: '', limit: 5 }, foundJobs: [], jobs: [], status: 'running' });
+    await history.append({ runId: 'run-1', requestedAt: '2026-10-09T00:00:00.000Z', request: { command: 'batch-prepare', searchText: 'AI Engineer', location: '', limit: 5, submissionIntervalSeconds: 90 }, foundJobs: [], jobs: [], status: 'running' });
     await history.update('run-1', entry => {
       entry.foundJobs.push({ jobId: '94974243', title: 'AI Engineer', employer: 'SustainRecruit', seekUrl: 'https://au.seek.com/job/94974243' });
-      entry.jobs.push({ jobId: '94974243', title: 'AI Engineer', employer: 'SustainRecruit', seekUrl: 'https://au.seek.com/job/94974243', status: 'ready_to_submit', screeningAudit: [{ pageNumber: 1, pageAddress: 'https://au.seek.com/job/94974243/apply/questions', attempts: 1, fields: [{ key: '0:select', kind: 'select', question: 'Experience', required: true, selectedBefore: ['Choose'], selectedAtContinue: ['First'], changedByAutomation: true }] }] });
+      entry.jobs.push({ jobId: '94974243', title: 'AI Engineer', employer: 'SustainRecruit', seekUrl: 'https://au.seek.com/job/94974243', status: 'ready_to_submit', submissionPlan: '2026-10-09T00:01:00.000Z', submitted: false, screeningAudit: [{ pageNumber: 1, pageAddress: 'https://au.seek.com/job/94974243/apply/questions', attempts: 1, fields: [{ key: '0:select', kind: 'select', question: 'Experience', required: true, selectedBefore: ['Choose'], selectedAtContinue: ['First'], changedByAutomation: true }] }] });
       entry.status = 'completed'; entry.completedAt = '2026-10-09T00:01:00.000Z';
     });
     const saved = JSON.parse(await readFile(history.path, 'utf8'));
     expect(saved.runs).toHaveLength(1);
     expect(saved.runs[0].request.searchText).toBe('AI Engineer');
+    expect(saved.runs[0].request.submissionIntervalSeconds).toBe(90);
     expect(saved.runs[0].jobs[0].status).toBe('ready_to_submit');
+    expect(saved.runs[0].jobs[0].submitted).toBe(false);
     expect(saved.runs[0].jobs[0].screeningAudit[0].fields[0].selectedAtContinue).toEqual(['First']);
   } finally { await history.release(); await rm(directory, { recursive: true, force: true }); }
 });

@@ -34,12 +34,16 @@ cli.command('batch-prepare [search]')
   .requiredOption('--connect-cdp <url>', 'Attach to a manually signed-in dedicated local Chrome profile')
   .option('--query <keywords>', 'Override search keywords')
   .option('--location <location>', 'Override search location')
+  .option('--submission-interval <seconds>', 'Seconds to wait between recording each ready draft\'s manual submission plan', '0')
   .option('--batch-adapter <path>', 'Observed batch adapter', 'config/seek.batch.prepare.candidate.json')
   .action(async (search, options) => {
     validateCdpEndpoint(options.connectCdp);
+    const submissionIntervalSeconds = Number(options.submissionInterval);
+    if (!Number.isSafeInteger(submissionIntervalSeconds) || submissionIntervalSeconds < 0)
+      invalid('--submission-interval must be a whole number of seconds greater than or equal to zero');
     const loaded = await loadConfig(options.config, { query: search ?? options.query, location: options.location, mode: 'prepare' });
     const adapter = await loadBatchAdapter(path.resolve(options.batchAdapter));
-    const result = await runBatchPrepare(loaded, adapter, options.connectCdp);
+    const result = await runBatchPrepare(loaded, adapter, options.connectCdp, undefined, { submissionIntervalSeconds });
     console.log(`Batch result: ${result.artifact}`);
   });
 cli.command('prepare-one <jobId>')
