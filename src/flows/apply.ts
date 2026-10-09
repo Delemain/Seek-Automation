@@ -23,7 +23,7 @@ export async function applyFlow(loaded: Loaded, state: FlowState, ledger: Ledger
     state.phase = 'search'; await search(state.page, loaded, guard);
   });
   await step('Verify job and open application', async () => {
-    state.phase = 'application'; state.page = await startApplication(state.page, loaded, guard);
+    state.phase = 'job'; state.page = await startApplication(state.page, loaded, guard); state.phase = 'application';
   });
   await step('Upload documents, complete questions and verify review', async () => {
     state.phase = 'form'; await completeApplication(state.page, loaded, guard); state.phase = 'review';

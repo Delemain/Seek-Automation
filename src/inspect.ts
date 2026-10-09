@@ -14,10 +14,10 @@ const cli = new Command().name('inspect-seek')
   .option('--allow-origin <origin>', 'Additional exact HTTPS origin for an observed login redirect (repeatable)', (v, previous: string[]) => [...previous, v], [])
   .option('--output <directory>', 'Private structural snapshot directory', '.inspection')
   .option('--connect-cdp <url>', 'Use the current SEEK tab in a manually signed-in dedicated local Chrome profile')
-  .option('--page <kind>', 'Attach to the Quick apply, search, or account-menu tab (application|search|account)', 'application')
+  .option('--page <kind>', 'Attach to the Quick apply, job-detail, search, or account-menu tab (application|job|search|account)', 'application')
   .action(async options => {
     if (!process.stdin.isTTY) throw new WorkflowError('INTERACTIVE_LOGIN_REQUIRED', 'Run npm run inspect:seek in PowerShell or a graphical terminal on your PC.', 3, 'blocked');
-    if (!['application', 'search', 'account'].includes(options.page)) invalid('--page must be application, search, or account.');
+    if (!['application', 'job', 'search', 'account'].includes(options.page)) invalid('--page must be application, job, search, or account.');
     if (options.page !== 'application' && !options.connectCdp) invalid('--page search/account requires --connect-cdp.');
     const allowed = new Set(['https://au.seek.com','https://www.seek.com.au','https://login.seek.com']);
     for (const value of options.allowOrigin as string[]) {
@@ -50,6 +50,7 @@ const cli = new Command().name('inspect-seek')
               const location = new URL(candidate.url());
               if (!['https://au.seek.com', 'https://www.seek.com.au'].includes(location.origin)) return false;
               if (options.page === 'account') return location.pathname === '/';
+              if (options.page === 'job') return location.pathname === `/job/${observedJob.id}`;
               return options.page === 'search'
                 ? location.pathname === '/' || location.pathname === '/jobs' || location.pathname.startsWith('/jobs/') || /-jobs(?:\/|$)/i.test(location.pathname)
                 : location.pathname === `/job/${observedJob.id}/apply` || location.pathname.startsWith(`/job/${observedJob.id}/apply/`);
@@ -63,11 +64,14 @@ const cli = new Command().name('inspect-seek')
       if (cdpEndpoint) {
         if (!activePage) throw new WorkflowError('INSPECTION_TAB_NOT_FOUND', options.page === 'search'
           ? 'Open one SEEK search tab in the dedicated Chrome window, then run this command again.'
+          : options.page === 'job'
+            ? `Open the exact job detail for ${observedJob.id} in the dedicated Chrome window, then run this command again.`
           : options.page === 'account'
             ? 'Open one signed-in SEEK homepage tab in the dedicated Chrome window, then run this command again.'
             : `Open Quick apply for job ${observedJob.id} in the dedicated Chrome window, then run this command again.`, 3, 'blocked');
         console.log(options.page === 'account' ? 'Attached to the signed-in SEEK homepage for account-menu inspection.'
           : options.page === 'search' ? 'Attached to the existing SEEK search tab.'
+          : options.page === 'job' ? `Attached to the existing job detail for ${observedJob.title} at ${observedJob.employer}.`
             : `Attached to the existing Quick apply tab for ${observedJob.title} at ${observedJob.employer}.`);
       } else {
         const inspectionPage = activePage!;
@@ -80,6 +84,8 @@ const cli = new Command().name('inspect-seek')
         : 'This helper never fills fields, uploads documents, or clicks buttons. Your manual actions can still save a draft or upload files.');
       console.log(options.page === 'search'
         ? 'Press Enter on the search form, then search manually and press Enter again on the results. Type q to close.'
+        : options.page === 'job'
+          ? 'Leave the exact job detail visible. Press Enter once to capture its controls and links, then type q.'
         : options.page === 'account'
           ? 'Leave the profile menu closed. Press Enter once to open only that menu and capture it, then type q.'
           : 'When an application step is visible, return here and press Enter to capture its field labels. Repeat for other steps; type q to close.');

@@ -5,7 +5,11 @@ import { assertions, exactConfiguredAccount, identity, jobIdFromSeekPath, locate
 
 export async function startApplication(page: Page, { config: c, adapter: a }: Loaded, guard: NavigationGuard): Promise<Page> {
   const expect = assertions(page);
-  await expect(locate(page, a.job.ready)).toBeVisible();
+  try { await expect(locate(page, a.job.ready)).toBeVisible(); }
+  catch {
+    guard.check();
+    throw new WorkflowError('JOB_UI_CHANGED', 'The observed SEEK job-detail Apply control was not visible. Capture the job detail structure before retrying.', 5, 'blocked');
+  }
   guard.checkPage(page);
   await identity(page, c, a.job.identity);
   if (await visible(page, a.job.alreadyApplied)) throw new WorkflowError('ALREADY_APPLIED', 'Site reports this job was already applied for.', 8, 'already_applied');
