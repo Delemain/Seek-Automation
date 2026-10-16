@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import path from 'node:path';
 import os from 'node:os';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { hasExplicitAppliedMarker, loadBatchAdapter, planReadySubmissions, searchUrlMatchesQuery, visibleResultCardIds, waitForChangedSearchResults, type BatchItem } from '../../src/batch.js';
+import { hasExplicitAppliedMarker, loadBatchAdapter, planReadySubmissions, searchFieldMatchesQuery, searchUrlMatchesQuery, visibleResultCardIds, waitForChangedSearchResults, type BatchItem } from '../../src/batch.js';
 import { fixtureAdapter } from '../fixtures/seek-fixture.js';
 import { RunHistory } from '../../src/run-history.js';
 
@@ -26,6 +26,12 @@ test('batch search requires the SEEK result URL to reflect the submitted text', 
   expect(searchUrlMatchesQuery('https://au.seek.com/ai-engineer-jobs', 'AI Engineer')).toBe(true);
   expect(searchUrlMatchesQuery('https://au.seek.com/jobs?keywords=AI+Engineer', 'AI Engineer')).toBe(true);
   expect(searchUrlMatchesQuery('https://au.seek.com/jobs', 'AI Engineer')).toBe(false);
+});
+
+test('batch search may verify the submitted text in SEEK’s retained search field', async ({ page }) => {
+  await page.setContent('<label>Keywords<input value="AI Engineer"></label>');
+  await expect(searchFieldMatchesQuery(page, fixtureAdapter, 'AI Engineer')).resolves.toBe(true);
+  await expect(searchFieldMatchesQuery(page, fixtureAdapter, 'AI Tester')).resolves.toBe(false);
 });
 
 test('observed batch adapter includes title and employer card mappings', async () => {

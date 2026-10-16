@@ -20,7 +20,8 @@ export type BatchItem = BatchCandidate & {
 };
 export type BatchResult = {
   runId: string; query: string; location: string; submissionIntervalSeconds: number;
-  searchUrl?: string; candidates: BatchItem[]; artifact: string; history: string;
+  searchUrl?: string; searchVerification?: 'result_url' | 'search_field';
+  candidates: BatchItem[]; artifact: string; history: string;
 };
 export type BatchPrepareOptions = {
   submissionIntervalSeconds?: number;
@@ -43,14 +44,22 @@ export async function loadBatchAdapter(file: string): Promise<Adapter> {
 export function hasExplicitAppliedMarker(text: string) { return /\bapplied\b/i.test(text); }
 
 /** SEEK normally puts the submitted search text in its results path, for example /ai-engineer-jobs. */
-export function searchUrlMatchesQuery(rawUrl: string, query: string) {
-  const normalize = (value: string) => value.normalize('NFKD').toLocaleLowerCase()
+function normalizeSearchText(value: string) {
+  return value.normalize('NFKD').toLocaleLowerCase()
     .replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-  const expected = normalize(query);
+}
+
+export function searchUrlMatchesQuery(rawUrl: string, query: string) {
+  const expected = normalizeSearchText(query);
   if (!expected) return true;
   const url = new URL(rawUrl);
   const candidates = [url.pathname, ...url.searchParams.values()];
-  return candidates.some(candidate => ` ${normalize(candidate)} `.includes(` ${expected} `));
+  return candidates.some(candidate => ` ${normalizeSearchText(candidate)} `.includes(` ${expected} `));
+}
+
+export async function searchFieldMatchesQuery(page: Page, adapter: Adapter, query: string) {
+  const value = await (await unique(page, adapter.search.query)).inputValue();
+  return normalizeSearchText(value) === normalizeSearchText(query);
 }
 
 function safeSearchUrl(rawUrl: string) {
@@ -82,7 +91,8 @@ export async function waitForChangedSearchResults(page: Page, adapter: Adapter, 
   throw new WorkflowError('SEARCH_RESULTS_UNCHANGED', 'SEEK did not replace the visible job cards after Search. No homepage or stale results were prepared.', 5, 'blocked');
 }
 
-export async function discoverBatchCandidates(page: Page, loaded: Loaded, adapter: Adapter, guard: NavigationGuard, limit: number): Promise<BatchCandidate[]> {
+export type BatchDiscovery = { candidates: BatchCandidate[]; searchUrl: string; searchVerification: 'result_url' | 'search_field' };
+export async function discoverBatchCandidates(page: Page, loaded: Loaded, adapter: Adapter, guard: NavigationGuard, limit: number): Promise<BatchDiscovery> {
   const { config: c } = loaded;
   await page.goto(c.baseUrl, { waitUntil: 'domcontentloaded' });
   guard.checkPage(page);
@@ -93,8 +103,10 @@ export async function discoverBatchCandidates(page: Page, loaded: Loaded, adapte
   await (await unique(page, adapter.search.submit)).click();
   await waitForChangedSearchResults(page, adapter, previousIds, () => guard.checkPage(page), c.stepTimeoutMs);
   guard.checkPage(page);
-  if (!searchUrlMatchesQuery(page.url(), c.query))
-    throw new WorkflowError('SEARCH_QUERY_UNVERIFIED', 'SEEK changed job cards but the result URL does not contain the submitted search text. No jobs were prepared.', 5, 'blocked');
+  const searchVerification = searchUrlMatchesQuery(page.url(), c.query) ? 'result_url' as const
+    : await searchFieldMatchesQuery(page, adapter, c.query) ? 'search_field' as const : undefined;
+  if (!searchVerification)
+    throw new WorkflowError('SEARCH_QUERY_UNVERIFIED', 'SEEK changed job cards but neither the result URL nor the visible search field matches the submitted search text. No jobs were prepared.', 5, 'blocked');
   const candidates: BatchCandidate[] = [];
   for (const card of await locate(page, adapter.search.card).all()) {
     if (candidates.length === limit) break;
@@ -110,7 +122,7 @@ export async function discoverBatchCandidates(page: Page, loaded: Loaded, adapte
     const employer = (await (await unique(card, adapter.search.cardEmployer!)).innerText()).trim();
     if (title && employer) candidates.push({ jobId, title, employer, url: url.origin + url.pathname });
   }
-  return candidates;
+  return { candidates, searchUrl: safeSearchUrl(page.url()), searchVerification };
 }
 
 function jobLoaded(loaded: Loaded, adapter: Adapter, candidate: BatchCandidate): Loaded {
@@ -183,13 +195,16 @@ export async function runBatchPrepare(loaded: Loaded, batchAdapter: Adapter, cdp
     const guard = new NavigationGuard(loaded.config);
     discoveryPage = await context.newPage();
     await guard.installPage(discoveryPage);
-    const candidates = await discoverBatchCandidates(discoveryPage, loaded, batchAdapter, guard, 5);
-    result.searchUrl = safeSearchUrl(discoveryPage.url());
-    console.log(`Verified SEEK search: ${result.searchUrl}`);
+    const discovery = await discoverBatchCandidates(discoveryPage, loaded, batchAdapter, guard, 5);
+    const { candidates } = discovery;
+    result.searchUrl = discovery.searchUrl;
+    result.searchVerification = discovery.searchVerification;
+    console.log(`Verified SEEK search (${discovery.searchVerification}): ${result.searchUrl}`);
     console.log('Found jobs without an explicit Applied marker:');
     for (const [index, candidate] of candidates.entries()) console.log(`${index + 1}. ${candidate.title} — ${candidate.employer} (${candidate.jobId})`);
     await history.update(runId, record => {
       record.searchUrl = result.searchUrl;
+      record.searchVerification = result.searchVerification;
       record.foundJobs = candidates.map(candidate => ({ jobId: candidate.jobId, title: candidate.title, employer: candidate.employer, seekUrl: candidate.url }));
     });
     if (candidates.length !== 5) throw new WorkflowError('BATCH_INSUFFICIENT_CANDIDATES', `Found ${candidates.length} eligible visible jobs; five are required before batch prepare starts.`, 4, 'blocked');

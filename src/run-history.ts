@@ -18,6 +18,7 @@ export type RunHistoryEntry = {
     | { command: 'prepare-one'; jobId: string; title: string; employer: string };
   /** Query/fragment-free SEEK results page after the search text was verified in its URL. */
   searchUrl?: string;
+  searchVerification?: 'result_url' | 'search_field';
   foundJobs: Array<{ jobId: string; title: string; employer: string; seekUrl: string }>;
   jobs: RunHistoryJob[];
   status: 'running' | 'completed' | 'cancelled' | 'failed'; failure?: { code: string; message: string };
