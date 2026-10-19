@@ -26,7 +26,7 @@ export const fixtureAdapter: Adapter = {
   history: { url: '/history', ready: id('history'), entry: id('history-entry'), jobIdAttribute: 'data-job-id', reference: id('history-reference') },
 };
 export type Options = { expired?: boolean; unknownQuestion?: boolean; external?: boolean; popup?: boolean; loseConfirmation?: boolean; existingResume?: boolean; unselectedResume?: boolean; profileOnly?: boolean; radioCoverCompletion?: boolean; prefilledSearchLocation?: boolean; thirdPartyFrame?: boolean;
-  missing?: boolean; ambiguous?: boolean; mismatch?: boolean; alreadyApplied?: boolean; uploadFailure?: boolean; pagination?: boolean; challenge?: boolean; inlineDetail?: boolean; wrongApplyHref?: boolean; wrongAccountOnApplication?: boolean; wrongAccountOnReview?: boolean; questionsBeforeProfile?: boolean };
+  missing?: boolean; ambiguous?: boolean; mismatch?: boolean; alreadyApplied?: boolean; uploadFailure?: boolean; pagination?: boolean; challenge?: boolean; inlineDetail?: boolean; wrongApplyHref?: boolean; wrongAccountOnApplication?: boolean; wrongAccountOnReview?: boolean; questionsBeforeProfile?: boolean; textHistory?: boolean };
 function html(body: string) { return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Local workflow fixture</title></head><body>${body}</body></html>`; }
 const account = '<div data-testid="account">test@example.invalid</div>';
 const jobIdentity = `${account}<span data-testid="job-id">94974243</span><h1 data-testid="title">QA Test Engineer</h1><div data-testid="employer">Fixture Employer</div>`;
@@ -128,7 +128,12 @@ export async function startFixture(options: Options = {}) {
       </script>`)); return;
     }
     if (url.pathname === '/submit' && req.method === 'POST') { state.submissions++; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ reference: 'fixture-application-1' })); return; }
-    if (url.pathname === '/history') { res.end(html(`${account}<section data-testid="history">${state.submissions ? '<article data-testid="history-entry" data-job-id="94974243"><span data-testid="history-reference">fixture-application-1</span></article>' : ''}</section>`)); return; }
+    if (url.pathname === '/history') {
+      const entry = options.textHistory
+        ? '<article><button>Job Title QA Test Engineer</button><p>Fixture Employer</p><p>Applied on SEEK</p></article>'
+        : '<article data-testid="history-entry" data-job-id="94974243"><span data-testid="history-reference">fixture-application-1</span></article>';
+      res.end(html(`${account}<section data-testid="history">${state.submissions ? entry : ''}</section>`)); return;
+    }
     res.statusCode = 404; res.end('Not found');
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));

@@ -1,6 +1,6 @@
 # Start the live SEEK setup on your PC
 
-A prepare-only adapter candidate is ready for a first live check, but has not yet passed against SEEK. These steps use your private Windows browser session. No password or session file needs to be sent to the developer, and the candidate cannot submit an application.
+An observed adapter candidate is ready for supervised live checks, but automated submission has not yet passed against SEEK. These steps use your private Windows browser session. No password or session file needs to be sent to the developer.
 
 1. Install **Node.js 24 LTS** from <https://nodejs.org/en/download> if it is not already installed.
 2. Use your existing project folder `C:\Maxim\seek\Seek-Automation`, containing `package.json`. The runner uses the `Resume.docx` already selected in SEEK and reads your cover letter from `C:\Maxim\seek\Cover Letter.docx`.
@@ -62,7 +62,7 @@ npm run apply -- --config config/local.json --mode prepare --connect-cdp http://
 
 Skip `Copy-Item` if you already have a customized `config/local.json`; do not overwrite it. The run searches for `AI Engineer` with no location, verifies the exact job, checks your account email on Quick Apply **before** uploading, verifies the preselected résumé, uploads the local cover letter, leaves your SEEK Profile and skills untouched, then checks review. It does not click Submit application. Uploading may save a draft. If it stops, share only the diagnostic code and phase from `result.json` after reviewing for personal data; do not share the full trace or session files.
 
-This candidate deliberately blocks `--mode submit` until the confirmation screen and application-history check are observed and tested. The standalone `auth` command also blocks this candidate because the homepage account email could not be verified; use the dedicated Chrome CDP path above. This is not yet a live-tested automation path.
+The candidate now checks the observed job-specific success page and the Activity/Applied history entry. It can run `--mode submit`, but that automated click has not been exercised against SEEK yet. The standalone `auth` command still blocks this candidate because the homepage account email could not be verified; use the dedicated Chrome CDP path above.
 
 ## Capture a manually submitted application
 

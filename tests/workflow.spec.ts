@@ -196,6 +196,17 @@ test('confirmed submission is durable and a new invocation cannot duplicate it',
     expect(server.state.submissions).toBe(1);
   });
 });
+test('a job-bound success screen confirms submission when SEEK exposes no reference', async () => {
+  await scenario({}, async (loaded, server) => {
+    loaded.config.mode = 'submit';
+    delete loaded.adapter.confirmation!.reference;
+    const result = await run(loaded);
+    expect(result.status, result.message).toBe('submitted');
+    expect(result.confirmation).toBe('verified-success-screen:94974243');
+    expect((await new Ledger(loaded.config).read())?.state).toBe('confirmed');
+    expect(server.state.submissions).toBe(1);
+  });
+});
 test('lost confirmation is uncertain, never retried, and reconciles the original application', async () => {
   await scenario({ loseConfirmation: true }, async (loaded, server) => {
     loaded.config.mode = 'submit';
@@ -209,6 +220,21 @@ test('lost confirmation is uncertain, never retried, and reconciles the original
     expect(reconciled.code, reconciled.message).toBe('RECONCILED');
     expect(reconciled.exitCode).toBe(8);
     expect((await new Ledger(loaded.config).read())?.runId).toBe(entry?.runId);
+    expect((await new Ledger(loaded.config).read())?.state).toBe('confirmed');
+    expect(server.state.submissions).toBe(1);
+  });
+});
+test('visible Applied history reconciles title, employer and status when SEEK exposes no application reference', async () => {
+  await scenario({ loseConfirmation: true, textHistory: true }, async (loaded, server) => {
+    loaded.config.mode = 'submit';
+    loaded.adapter.history = {
+      url: '/history', ready: { by: 'testId', value: 'history' }, titleButtonPrefix: 'Job Title ',
+      employerFromConfigText: true, appliedStatus: { by: 'text', value: 'Applied on SEEK' },
+    };
+    expect((await run(loaded)).status).toBe('submission_uncertain');
+    const reconciled = await run(loaded, 'reconcile');
+    expect(reconciled.code, reconciled.message).toBe('RECONCILED');
+    expect(reconciled.confirmation).toBe('verified-applied-history:94974243');
     expect((await new Ledger(loaded.config).read())?.state).toBe('confirmed');
     expect(server.state.submissions).toBe(1);
   });

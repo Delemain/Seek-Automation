@@ -36,8 +36,16 @@ export const adapterSchema = z.object({
   review: z.object({ ready: locatorSchema, identity: identitySchema.refine(x => !!x.account !== !!x.accountFromConfigText, 'Review must verify the exact account.'), resume: locatorSchema, coverLetter: locatorSchema,
     answers: z.record(z.string(), locatorSchema), applicant: z.record(z.string(), locatorSchema), submit: locatorSchema,
     mustBeChecked: z.array(locatorSchema).optional(), mustBeUnchecked: z.array(locatorSchema).optional() }).strict(),
-  confirmation: z.object({ ready: locatorSchema, jobId: locatorSchema, reference: locatorSchema }).strict().optional(),
-  history: z.object({ url: z.string(), ready: locatorSchema, entry: locatorSchema, jobIdAttribute: z.string(), reference: locatorSchema }).strict().optional(),
+  confirmation: z.object({ ready: locatorSchema, jobId: locatorSchema.optional(), jobIdFromUrl: z.literal(true).optional(), reference: locatorSchema.optional() }).strict()
+    .refine(x => !!x.jobId !== !!x.jobIdFromUrl, 'Choose exactly one confirmation job ID source.').optional(),
+  history: z.object({ url: z.string(), ready: locatorSchema,
+    entry: locatorSchema.optional(), jobIdAttribute: z.string().optional(), reference: locatorSchema.optional(),
+    titleButtonPrefix: z.string().min(1).optional(), employerFromConfigText: z.literal(true).optional(), appliedStatus: locatorSchema.optional(),
+  }).strict().refine(x => {
+    const attributeHistory = !!x.entry && !!x.jobIdAttribute && !!x.reference;
+    const visibleHistory = !!x.titleButtonPrefix && !!x.employerFromConfigText && !!x.appliedStatus;
+    return attributeHistory !== visibleHistory;
+  }, 'Use either a job-ID attribute/reference history mapping or a visible title/employer/applied-status mapping.').optional(),
 }).strict();
 
 const configSchema = z.object({

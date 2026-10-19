@@ -1,7 +1,7 @@
 {
   "kind": "observed",
-  "observedAt": "2026-10-08",
-  "evidence": "Operator structural captures of signed-in SEEK search, Quick Apply documents/profile, and review for job 94974243. This is a prepare-only candidate, not a live automated pass.",
+  "observedAt": "2026-10-19",
+  "evidence": "Operator structural captures of signed-in SEEK search, Quick Apply documents/profile/review, the job-specific success URL and Activity/Applied history for job 94974243. Submit remains untested by automation.",
   "auth": {
     "url": "/",
     "ready": { "by": "css", "value": "button[data-automation='account name']" },
@@ -65,5 +65,16 @@
     "mustBeChecked": [
       { "by": "testId", "value": "profile-visibility-field2-radio-group-standard" }
     ]
+  },
+  "confirmation": {
+    "ready": { "by": "text", "value": "Your application has been sent to SustainRecruit" },
+    "jobIdFromUrl": true
+  },
+  "history": {
+    "url": "/my-activity/applied-jobs",
+    "ready": { "by": "testId", "value": "sort-button" },
+    "titleButtonPrefix": "Job Title ",
+    "employerFromConfigText": true,
+    "appliedStatus": { "by": "text", "value": "Applied on SEEK" }
   }
 }

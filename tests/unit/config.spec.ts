@@ -35,12 +35,12 @@ test('observed adapter draft is deliberately not runnable in production', async 
   expect(draft.missingBeforeSubmit.length).toBeGreaterThan(0);
   expect(adapterSchema.safeParse(draft).success).toBe(false);
 });
-test('observed prepare candidate parses but refuses submit without success and history evidence', async () => {
+test('observed candidate includes success and Applied-history evidence for submit preflight', async () => {
   const candidate = adapterSchema.parse(JSON.parse(await readFile('config/seek.prepare.candidate.json', 'utf8')));
   expect(candidate.kind).toBe('observed');
   expect(candidate.auth.deferAccountUntilApplication).toBe(true);
-  expect(candidate.confirmation).toBeUndefined();
-  expect(candidate.history).toBeUndefined();
+  expect(candidate.confirmation).toMatchObject({ jobIdFromUrl: true });
+  expect(candidate.history).toMatchObject({ url: '/my-activity/applied-jobs', titleButtonPrefix: 'Job Title ' });
   const f = await fixtureConfig('http://127.0.0.1:12345');
   try {
     f.raw.documents = { existingResumeFilename: 'Resume.docx', coverLetterPath: './Cover Letter.docx' } as typeof f.raw.documents;
@@ -49,7 +49,7 @@ test('observed prepare candidate parses but refuses submit without success and h
     await writeFile(f.file, JSON.stringify(f.raw));
     await writeFile(path.join(f.dir, 'adapter.json'), JSON.stringify(candidate));
     expect((await loadConfig(f.file)).config.mode).toBe('prepare');
-    await expect(loadConfig(f.file, { mode: 'submit' })).rejects.toMatchObject({ exitCode: 2 });
+    expect((await loadConfig(f.file, { mode: 'submit' })).config.mode).toBe('submit');
   } finally { await rm(f.dir, { recursive: true, force: true }); }
 });
 test('job ID URL verification uses a whole path segment', () => {

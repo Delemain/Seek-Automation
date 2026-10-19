@@ -1,8 +1,8 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import type { Loaded } from '../config.js';
 import { WorkflowError, type TerminalStatus } from '../errors.js';
 import { Ledger, type Entry } from '../submission-ledger.js';
-import { assertions, checkAuthentication, locate, unique, exact, NavigationGuard } from '../pages/ui.js';
+import { assertions, checkAuthentication, jobIdFromSeekPath, locate, unique, exact, NavigationGuard } from '../pages/ui.js';
 import { search } from '../pages/search-page.js';
 import { startApplication } from '../pages/job-page.js';
 import { completeApplication, assertReview } from '../pages/application-page.js';
@@ -11,6 +11,29 @@ import type { ScreeningPageAudit } from '../pages/screening-audit.js';
 export type Step = <T>(name: string, action: () => Promise<T>) => Promise<T>;
 export type FlowState = { phase: string; page: Page; attempted: boolean; confirmation?: string; screeningAudit: ScreeningPageAudit[] };
 export type ApplyOptions = { directJob?: boolean; autoQuestions?: boolean };
+
+async function observedHistoryCard(page: Page, loaded: Loaded): Promise<Locator> {
+  const { config: c, adapter: a } = loaded;
+  const history = a.history!;
+  const titleButtons = page.getByRole('button', { name: `${history.titleButtonPrefix}${c.target.expectedTitle}`, exact: true });
+  const candidates: Locator[] = [];
+  for (const title of await titleButtons.all()) {
+    let container = title;
+    for (let depth = 0; depth < 6; depth++) {
+      const employer = container.getByText(c.target.expectedEmployer, { exact: true });
+      const applied = locate(container, history.appliedStatus!);
+      if (await employer.count() === 1 && await applied.count() === 1 && await employer.isVisible() && await applied.isVisible()) {
+        candidates.push(container);
+        break;
+      }
+      container = container.locator('..');
+    }
+  }
+  if (candidates.length !== 1)
+    throw new WorkflowError('RECONCILIATION_UNRESOLVED', 'Applied history did not show exactly one visible entry matching the configured title, employer and Applied status. Ledger remains blocked.', 7, 'submission_uncertain');
+  return candidates[0];
+}
+
 export async function applyFlow(loaded: Loaded, state: FlowState, ledger: Ledger, runId: string, guard: NavigationGuard, step: Step, options: ApplyOptions = {}): Promise<TerminalStatus> {
   const expect = assertions(state.page);
   const { config: c, adapter: a } = loaded;
@@ -54,8 +77,11 @@ export async function applyFlow(loaded: Loaded, state: FlowState, ledger: Ledger
       await (await unique(state.page, a.review.submit)).click(); // Exactly one call. Never retried.
       await expect(locate(state.page, a.confirmation!.ready)).toBeVisible();
       guard.checkPage(state.page);
-      await exact(state.page, a.confirmation!.jobId, c.target.jobId);
-      const confirmation = (await (await unique(state.page, a.confirmation!.reference)).innerText()).trim();
+      if (a.confirmation!.jobIdFromUrl) jobIdFromSeekPath(state.page, c.target.jobId);
+      else await exact(state.page, a.confirmation!.jobId!, c.target.jobId);
+      const confirmation = a.confirmation!.reference
+        ? (await (await unique(state.page, a.confirmation!.reference)).innerText()).trim()
+        : `verified-success-screen:${c.target.jobId}`;
       if (!confirmation) throw Error('No confirmation reference');
       await ledger.write({ ...entry, state: 'confirmed', confirmation, updatedAt: new Date().toISOString() });
       state.confirmation = confirmation; state.phase = 'confirmation';
@@ -80,11 +106,19 @@ export async function reconcileFlow(loaded: Loaded, state: FlowState, ledger: Le
     guard.checkPage(state.page);
     await checkAuthentication(state.page, c, a);
     await expect(locate(state.page, history.ready)).toBeVisible();
+    if (history.titleButtonPrefix) {
+      await observedHistoryCard(state.page, loaded);
+      const confirmation = `verified-applied-history:${c.target.jobId}`;
+      const now = new Date().toISOString();
+      await ledger.write({ ...existing, state: 'confirmed', confirmation, updatedAt: now, reconciledAt: now });
+      state.confirmation = confirmation;
+      return 'already_applied';
+    }
     const matches = [];
-    for (const entry of await locate(state.page, history.entry).all())
-      if (await entry.getAttribute(history.jobIdAttribute) === c.target.jobId) matches.push(entry);
+    for (const entry of await locate(state.page, history.entry!).all())
+      if (await entry.getAttribute(history.jobIdAttribute!) === c.target.jobId) matches.push(entry);
     if (matches.length !== 1) throw new WorkflowError('RECONCILIATION_UNRESOLVED', 'History did not show exactly one application for the approved job. Ledger remains blocked.', 7, 'submission_uncertain');
-    const confirmation = (await (await unique(matches[0], history.reference)).innerText()).trim();
+    const confirmation = (await (await unique(matches[0], history.reference!)).innerText()).trim();
     if (!confirmation) throw new WorkflowError('RECONCILIATION_UNRESOLVED', 'History reference is missing. Ledger remains blocked.', 7, 'submission_uncertain');
     const now = new Date().toISOString();
     await ledger.write({ ...existing, state: 'confirmed', confirmation, updatedAt: now, reconciledAt: now });
