@@ -1,10 +1,16 @@
 import { test, expect } from '@playwright/test';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { captureAccountMenu, captureControls, safePageAddress } from '../../src/inspection.js';
+import { captureAccountMenu, captureControls, matchesInspectionPage, safePageAddress } from '../../src/inspection.js';
 
 test('inspection strips OAuth queries and fragments from page addresses', () => {
   expect(safePageAddress('https://au.seek.com/profile?token=secret#private')).toBe('https://au.seek.com/profile');
+});
+test('Activity mode accepts only signed-in SEEK activity routes', () => {
+  expect(matchesInspectionPage('https://www.seek.com.au/my-activity/applied', 'activity', '94974243')).toBe(true);
+  expect(matchesInspectionPage('https://au.seek.com/activity', 'activity', '94974243')).toBe(true);
+  expect(matchesInspectionPage('https://www.seek.com.au/job/94974243/apply/review', 'activity', '94974243')).toBe(false);
+  expect(matchesInspectionPage('https://example.invalid/my-activity/applied', 'activity', '94974243')).toBe(false);
 });
 test('inspection captures labels and control structure without user-entered values', async ({ page }) => {
   await page.setContent('<label>Name<input name="name" required value="PRIVATE_NAME"></label><label>Experience<textarea>PRIVATE_RESUME</textarea></label><label for="s">Choice</label><select id="s"><option>First choice</option></select><button data-automation="continue">Continue</button><input type="hidden" value="SECRET_CSRF"><input type="file" data-testid="cover-file" style="display:none" accept=".docx,.pdf">');

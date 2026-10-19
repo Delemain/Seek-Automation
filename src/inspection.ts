@@ -1,6 +1,23 @@
 import type { Page } from '@playwright/test';
 import { WorkflowError } from './errors.js';
 
+const seekOrigins = ['https://au.seek.com', 'https://www.seek.com.au'];
+export const inspectionPageKinds = ['application', 'job', 'search', 'account', 'activity'] as const;
+export type InspectionPageKind = typeof inspectionPageKinds[number];
+
+export function matchesInspectionPage(rawUrl: string, kind: InspectionPageKind, jobId: string) {
+  try {
+    const location = new URL(rawUrl);
+    if (!seekOrigins.includes(location.origin)) return false;
+    if (kind === 'account') return location.pathname === '/';
+    if (kind === 'job') return location.pathname === `/job/${jobId}`;
+    if (kind === 'activity') return /(?:^|\/)(?:my-)?activity(?:\/|$)|(?:^|\/)applied(?:\/|$)/i.test(location.pathname);
+    if (kind === 'search')
+      return location.pathname === '/' || location.pathname === '/jobs' || location.pathname.startsWith('/jobs/') || /-jobs(?:\/|$)/i.test(location.pathname);
+    return location.pathname === `/job/${jobId}/apply` || location.pathname.startsWith(`/job/${jobId}/apply/`);
+  } catch { return false; }
+}
+
 export function safePageAddress(raw: string) {
   const url = new URL(raw);
   return url.origin + url.pathname; // No OAuth queries, fragments, state or tokens.

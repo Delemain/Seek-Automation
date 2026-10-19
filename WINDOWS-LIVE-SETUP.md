@@ -63,3 +63,13 @@ npm run apply -- --config config/local.json --mode prepare --connect-cdp http://
 Skip `Copy-Item` if you already have a customized `config/local.json`; do not overwrite it. The run searches for `AI Engineer` with no location, verifies the exact job, checks your account email on Quick Apply **before** uploading, verifies the preselected résumé, uploads the local cover letter, leaves your SEEK Profile and skills untouched, then checks review. It does not click Submit application. Uploading may save a draft. If it stops, share only the diagnostic code and phase from `result.json` after reviewing for personal data; do not share the full trace or session files.
 
 This candidate deliberately blocks `--mode submit` until the confirmation screen and application-history check are observed and tested. The standalone `auth` command also blocks this candidate because the homepage account email could not be verified; use the dedicated Chrome CDP path above. This is not yet a live-tested automation path.
+
+## Capture a manually submitted application
+
+If you manually submit an application you genuinely intend to send, retain structural evidence from both SEEK success states. With the success page still open in the dedicated Chrome window, run `npm run inspect:seek -- --connect-cdp http://127.0.0.1:9222`, press Enter once, then `q`. Next, open SEEK Activity with the **Applied** tab selected and run:
+
+```powershell
+npm run inspect:seek -- --connect-cdp http://127.0.0.1:9222 --page activity
+```
+
+Press Enter once, then `q`. Send the two resulting JSON files with cropped screenshots that retain the job title, employer, applied status, and any visible confirmation wording. Hide email, phone, and other personal details. The inspector saves control structure only and never clicks Submit.

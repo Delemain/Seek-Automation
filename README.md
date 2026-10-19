@@ -116,6 +116,8 @@ npm run apply -- --config config/local.json --mode submit
 
 The account, target, filenames and review values are rechecked immediately before submit. An attempted record is persisted before exactly one click. An observed confirmation must include the same job ID and a nonempty application reference. A click or navigation alone does not count. There are no automatic retries or per-run confirmation prompts after submit mode is explicitly configured.
 
+When a manual submission is intentionally made during observation, capture the success page with `npm run inspect:seek -- --connect-cdp http://127.0.0.1:9222`, then capture the Activity page with the Applied tab visible using `npm run inspect:seek -- --connect-cdp http://127.0.0.1:9222 --page activity`. These snapshots establish the structural success and history mappings; they do not cause submission.
+
 `--headless` overrides the headed default for apply/reconcile. `npm run apply -- --help` describes flags. To generate a Playwright HTML report for an explicitly configured live scenario, set `SEEK_CONFIG` in your shell and run `npm run test:live`. On PowerShell: `$env:SEEK_CONFIG = "config/local.json"`. On macOS/Linux: `SEEK_CONFIG=config/local.json npm run test:live`. That single test respects the JSON mode and uses workers 1, retries 0, and no parallel execution. Plain `npm test` never runs it.
 
 ## Questions and adapter limits
