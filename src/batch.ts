@@ -138,6 +138,45 @@ export async function confirmBatch(candidates: BatchCandidate[]): Promise<boolea
   } finally { terminal.close(); }
 }
 
+/** This is a second, explicit operator gate before one irreversible submission. */
+export async function confirmSingleSubmission(candidate: BatchCandidate): Promise<boolean> {
+  if (!process.stdin.isTTY) throw new WorkflowError('INTERACTIVE_CONFIRMATION_REQUIRED', 'Search submit requires an interactive terminal confirmation.', 3, 'blocked');
+  const terminal = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    console.log(`Selected one SEEK Quick Apply job: ${candidate.title} — ${candidate.employer} (${candidate.jobId})`);
+    const answer = await terminal.question('Type SUBMIT 1 to prepare and submit this one application: ');
+    return answer.trim() === 'SUBMIT 1';
+  } finally { terminal.close(); }
+}
+
+/** Search, show and explicitly confirm one candidate. It does not upload or submit. */
+export async function selectSingleSubmissionCandidate(loaded: Loaded, batchAdapter: Adapter, cdpEndpoint: string,
+  confirm: (candidate: BatchCandidate) => Promise<boolean> = confirmSingleSubmission): Promise<BatchCandidate> {
+  if (loaded.config.mode !== 'submit') throw new WorkflowError('SUBMIT_MODE_REQUIRED', 'Search submit requires submit mode.', 2, 'blocked');
+  if (!batchAdapter.confirmation || !batchAdapter.history)
+    throw new WorkflowError('INVALID_BATCH_ADAPTER', 'Search submit requires observed success and Applied-history mappings.', 2, 'blocked');
+  const endpoint = validateCdpEndpoint(cdpEndpoint);
+  let page: Page | undefined;
+  try {
+    let browser;
+    try { browser = await chromium.connectOverCDP(endpoint); }
+    catch { throw new WorkflowError('CDP_CONNECTION_FAILED', 'Cannot connect to the dedicated local Chrome profile. Start it with port 9222 and sign in first.', 3, 'blocked'); }
+    const context = browser.contexts()[0] as BrowserContext | undefined;
+    if (!context) throw new WorkflowError('CDP_CONTEXT_MISSING', 'The dedicated Chrome profile has no browser context.', 3, 'blocked');
+    configureContext(context, loaded.config.stepTimeoutMs);
+    const guard = new NavigationGuard(loaded.config);
+    page = await context.newPage();
+    await guard.installPage(page);
+    const discovery = await discoverBatchCandidates(page, loaded, batchAdapter, guard, 1);
+    console.log(`Verified SEEK search (${discovery.searchVerification}): ${discovery.searchUrl}`);
+    if (discovery.candidates.length !== 1)
+      throw new WorkflowError('SUBMIT_CANDIDATE_NOT_FOUND', 'No eligible visible SEEK job was found for this search. Nothing was uploaded or submitted.', 4, 'blocked');
+    const candidate = discovery.candidates[0];
+    if (!await confirm(candidate)) throw new WorkflowError('SUBMIT_CANCELLED', 'Submission was cancelled before any document upload.', 0, 'blocked');
+    return candidate;
+  } finally { await page?.close().catch(() => {}); }
+}
+
 function historyJob(item: BatchItem) {
   return {
     jobId: item.jobId, title: item.title, employer: item.employer, seekUrl: item.url,

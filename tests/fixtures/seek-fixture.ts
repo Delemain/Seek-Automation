@@ -123,7 +123,7 @@ export async function startFixture(options: Options = {}) {
       res.end(html(`${options.wrongAccountOnReview ? jobIdentity.replace('test@example.invalid', 'other@example.invalid') : jobIdentity}<section data-testid="review">${items}<button id="submit">Submit application</button></section><script>
         for(const el of document.querySelectorAll('[data-value]')) el.textContent=sessionStorage.getItem(el.dataset.value);
         document.getElementById('submit').onclick=async()=>{const r=await fetch('/submit',{method:'POST'});const d=await r.json();
-          ${options.loseConfirmation ? 'document.body.textContent="Waiting for confirmation";' : 'const panel=document.createElement("section");panel.dataset.testid="success";panel.innerHTML=\'<span data-testid="confirmed-job">94974243</span><span data-testid="reference"></span>\';panel.querySelector(\'[data-testid="reference"]\').textContent=d.reference;document.body.append(panel);'}
+          ${options.loseConfirmation ? 'document.body.textContent="Waiting for confirmation";' : 'const panel=document.createElement("section");panel.dataset.testid="success";panel.innerHTML=\'<p>Your application has been sent to Fixture Employer</p><span data-testid="confirmed-job">94974243</span><span data-testid="reference"></span>\';panel.querySelector(\'[data-testid="reference"]\').textContent=d.reference;document.body.append(panel);'}
         };
       </script>`)); return;
     }

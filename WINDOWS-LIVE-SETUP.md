@@ -64,6 +64,8 @@ Skip `Copy-Item` if you already have a customized `config/local.json`; do not ov
 
 The candidate now checks the observed job-specific success page and the Activity/Applied history entry. It can run `--mode submit`, but that automated click has not been exercised against SEEK yet. The standalone `auth` command still blocks this candidate because the homepage account email could not be verified; use the dedicated Chrome CDP path above.
 
+To search and submit one future job, use `npm run search:submit -- "YOUR SEARCH TEXT" --config config/local.json --connect-cdp http://127.0.0.1:9222 --location ""`. It prints the first eligible visible card, then waits for the exact response `SUBMIT 1` before any upload. It stops before Submit if the form contains unconfigured questions or does not match the observed Quick Apply/review flow.
+
 ## Capture a manually submitted application
 
 If you manually submit an application you genuinely intend to send, retain structural evidence from both SEEK success states. With the success page still open in the dedicated Chrome window, run `npm run inspect:seek -- --connect-cdp http://127.0.0.1:9222`, press Enter once, then `q`. Next, open SEEK Activity with the **Applied** tab selected and run:

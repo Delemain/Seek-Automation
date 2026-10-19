@@ -4,7 +4,7 @@ import { runWorkflow } from './reporting.js';
 import { authenticate } from './auth.js';
 import { WorkflowError, invalid } from './errors.js';
 import { validateCdpEndpoint } from './reporting.js';
-import { loadBatchAdapter, runBatchPrepare } from './batch.js';
+import { loadBatchAdapter, runBatchPrepare, selectSingleSubmissionCandidate } from './batch.js';
 import path from 'node:path';
 
 const cli = new Command().name('seek-test').description('Single-job SEEK production UI test runner. Prepare mode is the default.').version('0.1.0');
@@ -63,6 +63,25 @@ cli.command('prepare-one <jobId>')
     if (loaded.config.answers.length || loaded.config.applicant) invalid('prepare-one uses automatic screening; remove preconfigured applicant fields and answer mappings from this config.');
     const result = await runWorkflow(loaded, 'apply', async (name, action) => { console.log(name); return action(); },
       { cdpEndpoint: options.connectCdp, directJob: true, autoQuestions: true });
+    console.log(`${result.status} [${result.code}]: ${result.message}\nResult: ${result.artifacts.result}`);
+    process.exitCode = result.exitCode;
+  });
+cli.command('search-submit [search]')
+  .description('Search SEEK, show one eligible Quick Apply job, require SUBMIT 1, then prepare and submit only if review passes.')
+  .requiredOption('-c, --config <path>', 'Configuration JSON file')
+  .requiredOption('--connect-cdp <url>', 'Attach to a manually signed-in dedicated local Chrome profile')
+  .option('--query <keywords>', 'Override search keywords')
+  .option('--location <location>', 'Override search location')
+  .option('--batch-adapter <path>', 'Observed Quick Apply submit adapter', 'config/seek.batch.prepare.candidate.json')
+  .action(async (search, options) => {
+    validateCdpEndpoint(options.connectCdp);
+    const loaded = await loadConfig(options.config, { query: search ?? options.query, location: options.location, mode: 'submit' });
+    const adapter = await loadBatchAdapter(path.resolve(options.batchAdapter));
+    const candidate = await selectSingleSubmissionCandidate(loaded, adapter, options.connectCdp);
+    loaded.adapter = adapter;
+    loaded.config = { ...loaded.config, mode: 'submit', target: { jobId: candidate.jobId, expectedTitle: candidate.title, expectedEmployer: candidate.employer } };
+    const result = await runWorkflow(loaded, 'apply', async (name, action) => { console.log(name); return action(); },
+      { cdpEndpoint: options.connectCdp, directJob: true });
     console.log(`${result.status} [${result.code}]: ${result.message}\nResult: ${result.artifacts.result}`);
     process.exitCode = result.exitCode;
   });

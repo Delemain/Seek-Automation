@@ -196,10 +196,20 @@ test('confirmed submission is durable and a new invocation cannot duplicate it',
     expect(server.state.submissions).toBe(1);
   });
 });
+test('a confirmed selected job can submit through the direct exact-job path without automatic screening', async () => {
+  await scenario({}, async (loaded, server) => {
+    loaded.config.mode = 'submit';
+    const result = await runWorkflow(loaded, 'apply', (name, fn) => test.step(name, fn), { directJob: true });
+    expect(result.status, result.message).toBe('submitted');
+    expect(server.state.searches).toHaveLength(0);
+    expect(server.state.selectedJobs).toEqual(['94974243']);
+    expect(server.state.submissions).toBe(1);
+  });
+});
 test('a job-bound success screen confirms submission when SEEK exposes no reference', async () => {
   await scenario({}, async (loaded, server) => {
     loaded.config.mode = 'submit';
-    delete loaded.adapter.confirmation!.reference;
+    loaded.adapter.confirmation = { successMessagePrefix: 'Your application has been sent to ', jobId: { by: 'testId', value: 'confirmed-job' } };
     const result = await run(loaded);
     expect(result.status, result.message).toBe('submitted');
     expect(result.confirmation).toBe('verified-success-screen:94974243');

@@ -40,6 +40,8 @@ test('observed batch adapter includes title and employer card mappings', async (
   expect(adapter.search.cardTitle).toBeTruthy();
   expect(adapter.search.cardEmployer).toBeTruthy();
   expect(adapter.review.identity.targetPreviouslyVerified).toBe(true);
+  expect(adapter.confirmation).toMatchObject({ successMessagePrefix: 'Your application has been sent to ', jobIdFromUrl: true });
+  expect(adapter.history).toMatchObject({ url: '/my-activity/applied-jobs', titleButtonPrefix: 'Job Title ' });
 });
 
 test('batch submission plans are sequential, persisted, and never submitted', async () => {

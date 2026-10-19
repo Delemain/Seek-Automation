@@ -1,7 +1,7 @@
 {
   "kind": "observed",
   "observedAt": "2026-10-09",
-  "evidence": "Observed signed-in SEEK result cards expose jobTitle/jobCompany markers; batch preparation reuses the successfully live-tested Quick Apply, profile, and review controls. It is prepare-only and skips cards marked Applied.",
+  "evidence": "Observed signed-in SEEK result cards expose jobTitle/jobCompany markers; batch preparation reuses observed Quick Apply, profile, review, success and Applied-history controls. It skips cards marked Applied.",
   "auth": {
     "url": "/",
     "ready": { "by": "css", "value": "button[data-automation='account name']" },
@@ -68,5 +68,16 @@
     "mustBeChecked": [
       { "by": "testId", "value": "profile-visibility-field2-radio-group-standard" }
     ]
+  },
+  "confirmation": {
+    "successMessagePrefix": "Your application has been sent to ",
+    "jobIdFromUrl": true
+  },
+  "history": {
+    "url": "/my-activity/applied-jobs",
+    "ready": { "by": "testId", "value": "sort-button" },
+    "titleButtonPrefix": "Job Title ",
+    "employerFromConfigText": true,
+    "appliedStatus": { "by": "text", "value": "Applied on SEEK" }
   }
 }

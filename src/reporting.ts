@@ -43,7 +43,7 @@ export async function runWorkflow(loaded: Loaded, operation: 'apply' | 'reconcil
     phase: 'preflight', status: 'failed', code: 'WORKFLOW_FAILED', message: '', exitCode: 6,
     artifacts: { result: path.join(directory, 'result.json') } };
   const ledger = new Ledger(c);
-  const history = operation === 'apply' && connection.directJob ? new RunHistory(c.runHistoryPath) : undefined;
+  const history = operation === 'apply' && connection.directJob && c.mode === 'prepare' ? new RunHistory(c.runHistoryPath) : undefined;
   const guard = new NavigationGuard(c);
   const cdpEndpoint = connection.cdpEndpoint ? validateCdpEndpoint(connection.cdpEndpoint) : undefined;
   let browser: Browser | undefined, context: BrowserContext | undefined, state: FlowState | undefined, timer: NodeJS.Timeout | undefined;
@@ -93,8 +93,8 @@ export async function runWorkflow(loaded: Loaded, operation: 'apply' | 'reconcil
       // Preserve first-failure evidence before closing the context to interrupt pending actions.
       deadlineCleanup = (async () => { await captureEvidence(); await state?.page.close().catch(() => {}); if (!cdpEndpoint) await context?.close().catch(() => {}); })();
     }, c.runTimeoutMs);
-    if ((connection.directJob || connection.autoQuestions) && c.mode !== 'prepare')
-      throw new WorkflowError('PREPARE_ONLY', 'Direct job preparation and automatic screening are available only in prepare mode.', 2, 'blocked');
+    if (connection.autoQuestions && c.mode !== 'prepare')
+      throw new WorkflowError('PREPARE_ONLY', 'Automatic screening is available only in prepare mode.', 2, 'blocked');
     result.status = operation === 'apply' ? await applyFlow(loaded, state, ledger, runId, guard, step, connection) : await reconcileFlow(loaded, state, ledger, guard, step);
     guard.check();
     result.code = result.status === 'prepared' ? 'PREPARED' : result.status === 'submitted' ? 'SUBMITTED' : 'RECONCILED';

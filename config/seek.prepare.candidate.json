@@ -67,7 +67,7 @@
     ]
   },
   "confirmation": {
-    "ready": { "by": "text", "value": "Your application has been sent to SustainRecruit" },
+    "successMessagePrefix": "Your application has been sent to ",
     "jobIdFromUrl": true
   },
   "history": {

@@ -75,7 +75,9 @@ export async function applyFlow(loaded: Loaded, state: FlowState, ledger: Ledger
     try {
       guard.check();
       await (await unique(state.page, a.review.submit)).click(); // Exactly one call. Never retried.
-      await expect(locate(state.page, a.confirmation!.ready)).toBeVisible();
+      if (a.confirmation!.successMessagePrefix)
+        await expect(state.page.getByText(`${a.confirmation!.successMessagePrefix}${c.target.expectedEmployer}`, { exact: true })).toBeVisible();
+      else await expect(locate(state.page, a.confirmation!.ready!)).toBeVisible();
       guard.checkPage(state.page);
       if (a.confirmation!.jobIdFromUrl) jobIdFromSeekPath(state.page, c.target.jobId);
       else await exact(state.page, a.confirmation!.jobId!, c.target.jobId);
