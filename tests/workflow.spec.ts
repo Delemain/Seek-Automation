@@ -77,6 +77,48 @@ for (const questionsBeforeProfile of [false, true]) test(`prepare-one reaches re
     expect(server.state.submissions).toBe(0);
   } finally { await server.close(); await rm(files.dir, { recursive: true, force: true }); }
 });
+for (const confirm of [false, true]) test(`interactive one-job screening ${confirm ? 'submits once after' : 'cancels at'} final review confirmation`, async () => {
+  const server = await startFixture({ existingResume: true, profileOnly: true, radioCoverCompletion: true, questionsBeforeProfile: true });
+  const files = await fixtureConfig(server.origin);
+  try {
+    const config = JSON.parse(await readFile(files.file, 'utf8'));
+    config.mode = 'submit';
+    config.runTimeoutMs = 4000;
+    config.documents = { existingResumeFilename: 'Resume.docx', coverLetterPath: './Cover Letter.docx' };
+    delete config.applicant;
+    config.answers = [];
+    await writeFile(files.file, JSON.stringify(config));
+    const adapter = structuredClone(fixtureAdapter);
+    adapter.application.steps[0].uploads!.existingResume = { option: { by: 'role', role: 'radio', value: 'Resume.docx' } };
+    delete adapter.application.steps[0].uploads!.resume;
+    adapter.application.steps[0].uploads!.coverLetter = { input: { by: 'label', value: 'Upload cover letter' }, selectedRadio: { by: 'testId', value: 'cover-choice' } };
+    adapter.application.steps[1].ready = { by: 'testId', value: 'profile' };
+    adapter.application.steps[1].next = { by: 'role', role: 'button', value: 'Continue' };
+    delete adapter.application.steps[1].fields;
+    delete adapter.application.steps[1].questionRegion;
+    await writeFile(path.join(files.dir, 'adapter.json'), JSON.stringify(adapter));
+    const loaded = await loadConfig(files.file);
+    let confirmedAtReview = false;
+    const result = await runWorkflow(loaded, 'apply', (name, fn) => test.step(name, fn), {
+      directJob: true,
+      questionResponder: async question => question.kind === 'text' ? 'My truthful answer' : '2',
+      confirmBeforeSubmit: async () => {
+        expect(server.state.submissions).toBe(0);
+        expect(await new Ledger(loaded.config).read()).toBeUndefined();
+        confirmedAtReview = true;
+        if (!confirm) await new Promise(resolve => setTimeout(resolve, 4100)); // Operator time exceeds the active run budget.
+        return confirm;
+      },
+    });
+    expect(confirmedAtReview, result.message).toBe(true);
+    expect(result.code, result.message).toBe(confirm ? 'SUBMITTED' : 'SUBMIT_CANCELLED');
+    expect(result.phase).toBe(confirm ? 'confirmation' : 'review');
+    expect(server.state.screeningAnswers).toEqual([{ experience: 'second', licence: 'second', skills: ['second'], details: 'My truthful answer' }]);
+    expect(server.state.submissions).toBe(confirm ? 1 : 0);
+    expect((await new Ledger(loaded.config).read())?.state).toBe(confirm ? 'confirmed' : undefined);
+    expect(result.screeningAudit).toHaveLength(1);
+  } finally { await server.close(); await rm(files.dir, { recursive: true, force: true }); }
+});
 test('name-only search clears a prefilled location and still selects the exact job', async () => {
   await scenario({ prefilledSearchLocation: true }, async (loaded, server) => {
     loaded.config.location = '';

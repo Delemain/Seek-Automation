@@ -36,7 +36,7 @@ async function required(control: Locator) {
     element.closest('fieldset[required], [role="group"][aria-required="true"]') !== null);
 }
 
-async function questionSignature(root: Locator) {
+export async function questionSignature(root: Locator) {
   return root.locator('input, textarea, select, [role="combobox"], [role="radio"], [role="checkbox"]').evaluateAll(elements => elements
     .filter(element => {
       const box = element.getBoundingClientRect();

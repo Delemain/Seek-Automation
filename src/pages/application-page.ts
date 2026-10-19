@@ -4,6 +4,7 @@ import { documentInfo } from '../config.js';
 import { WorkflowError } from '../errors.js';
 import { assertions, identity, locate, unique, visible, exact, type NavigationGuard } from './ui.js';
 import { completeAutomaticQuestions, waitForDestinationOrQuestions } from './automatic-questions.js';
+import { completeInteractiveQuestions, type QuestionResponder } from './interactive-questions.js';
 import { beginScreeningPage, snapshotScreening, updateScreeningPage, type ScreeningPageAudit } from './screening-audit.js';
 
 async function upload(page: Page, spec: NonNullable<Adapter['application']['steps'][number]['uploads']>['coverLetter'], doc: DocumentInfo, c: Config) {
@@ -38,7 +39,7 @@ async function fillAnswer(control: Locator, answer: Config['answers'][number]) {
     }
   }
 }
-export async function completeApplication(page: Page, loaded: Loaded, guard: NavigationGuard, autoQuestions = false, screeningAudit: ScreeningPageAudit[] = []) {
+export async function completeApplication(page: Page, loaded: Loaded, guard: NavigationGuard, autoQuestions = false, screeningAudit: ScreeningPageAudit[] = [], questionResponder?: QuestionResponder) {
   const expect = assertions(page);
   const { config: c, adapter: a, documents: docs } = loaded;
   const used = new Set<string>();
@@ -100,7 +101,7 @@ export async function completeApplication(page: Page, loaded: Loaded, guard: Nav
     if (configuredAudit && configuredRegion) updateScreeningPage(configuredAudit, await snapshotScreening(configuredRegion));
     await (await unique(page, step.next)).click();
     if (await visible(page, step.validationErrors)) throw new WorkflowError('FORM_VALIDATION', 'Form rejected configured inputs.');
-    if (autoQuestions) {
+    if (autoQuestions || questionResponder) {
       const destination = a.application.steps[index + 1]?.ready ?? a.review.ready;
       // The document step reuses the same Continue selector on later pages. Its
       // visible selected-document radio is a better outgoing marker than the
@@ -110,8 +111,12 @@ export async function completeApplication(page: Page, loaded: Loaded, guard: Nav
         : step.ready;
       const stage = await waitForDestinationOrQuestions(page, destination, step.next,
         () => guard.checkPage(page), c.stepTimeoutMs, outgoing);
-      if (stage === 'questions') await completeAutomaticQuestions(page, destination, step.next,
-        () => guard.checkPage(page), 8, c.stepTimeoutMs, screeningAudit);
+      if (stage === 'questions') {
+        if (questionResponder) await completeInteractiveQuestions(page, destination, step.next,
+          () => guard.checkPage(page), questionResponder, 8, c.stepTimeoutMs, screeningAudit);
+        else await completeAutomaticQuestions(page, destination, step.next,
+          () => guard.checkPage(page), 8, c.stepTimeoutMs, screeningAudit);
+      }
     }
   }
   if (used.size !== c.answers.length) throw new WorkflowError('QUESTION_NOT_FOUND', 'Not all configured screening questions were encountered.', 5, 'blocked');

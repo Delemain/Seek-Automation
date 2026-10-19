@@ -7,10 +7,11 @@ import { search } from '../pages/search-page.js';
 import { startApplication } from '../pages/job-page.js';
 import { completeApplication, assertReview } from '../pages/application-page.js';
 import type { ScreeningPageAudit } from '../pages/screening-audit.js';
+import type { QuestionResponder } from '../pages/interactive-questions.js';
 
 export type Step = <T>(name: string, action: () => Promise<T>) => Promise<T>;
 export type FlowState = { phase: string; page: Page; attempted: boolean; confirmation?: string; screeningAudit: ScreeningPageAudit[] };
-export type ApplyOptions = { directJob?: boolean; autoQuestions?: boolean };
+export type ApplyOptions = { directJob?: boolean; autoQuestions?: boolean; questionResponder?: QuestionResponder; confirmBeforeSubmit?: () => Promise<boolean> };
 
 async function observedHistoryCard(page: Page, loaded: Loaded): Promise<Locator> {
   const { config: c, adapter: a } = loaded;
@@ -60,11 +61,15 @@ export async function applyFlow(loaded: Loaded, state: FlowState, ledger: Ledger
     state.phase = 'job'; state.page = await startApplication(state.page, loaded, guard); state.phase = 'application';
   });
   await step('Upload documents, complete questions and verify review', async () => {
-    state.phase = 'form'; await completeApplication(state.page, loaded, guard, options.autoQuestions, state.screeningAudit); state.phase = 'review';
+    state.phase = 'form'; await completeApplication(state.page, loaded, guard, options.autoQuestions, state.screeningAudit, options.questionResponder); state.phase = 'review';
   });
   if (c.mode === 'prepare') return 'prepared';
   return step<TerminalStatus>('Record intent, submit once and verify confirmation', async () => {
     guard.check();
+    await assertReview(state.page, loaded, guard);
+    if (options.confirmBeforeSubmit && !await options.confirmBeforeSubmit())
+      throw new WorkflowError('SUBMIT_CANCELLED', 'Submission was cancelled at the verified review page. No Submit click was made.', 0, 'blocked');
+    guard.checkPage(state.page);
     await assertReview(state.page, loaded, guard);
     await ledger.ensureUnused();
     const now = new Date().toISOString();

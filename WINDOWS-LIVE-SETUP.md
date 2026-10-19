@@ -64,7 +64,7 @@ Skip `Copy-Item` if you already have a customized `config/local.json`; do not ov
 
 The candidate now checks the observed job-specific success page and the Activity/Applied history entry. It can run `--mode submit`, but that automated click has not been exercised against SEEK yet. The standalone `auth` command still blocks this candidate because the homepage account email could not be verified; use the dedicated Chrome CDP path above.
 
-To search and submit one future job, use `npm run search:submit -- "YOUR SEARCH TEXT" --config config/local.json --connect-cdp http://127.0.0.1:9222 --location ""`. It prints the first eligible visible card, then waits for the exact response `SUBMIT 1` before any upload. It stops before Submit if the form contains unconfigured questions or does not match the observed Quick Apply/review flow.
+To search and submit one future job, use `npm run search:submit -- "YOUR SEARCH TEXT" --config config/local.json --connect-cdp http://127.0.0.1:9222 --location ""`. It prints one eligible card and waits for `PREPARE 1` before uploading. Answer the screening questions in PowerShell using the numbered choices, comma-separated numbers for multiple choices, or a text answer; `q` cancels. It waits while you answer. After the review page is verified, check it in Chrome, then type `SUBMIT 1` to submit once. Any other final response cancels. Unsupported controls or a changed Quick Apply/review flow stop before Submit. Preparing can save a draft, and the private result contains your screening answers.
 
 ## Capture a manually submitted application
 

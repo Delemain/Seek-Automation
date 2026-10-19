@@ -49,6 +49,23 @@ export async function runWorkflow(loaded: Loaded, operation: 'apply' | 'reconcil
   let browser: Browser | undefined, context: BrowserContext | undefined, state: FlowState | undefined, timer: NodeJS.Timeout | undefined;
   let evidenceCapture: Promise<void> | undefined;
   let deadlineCleanup: Promise<void> | undefined;
+  let remainingRunMs = c.runTimeoutMs;
+  let deadlineStartedAt = 0;
+  const armDeadline = () => {
+    deadlineStartedAt = Date.now();
+    timer = setTimeout(() => {
+      guard.expired = true;
+      // Preserve first-failure evidence before interrupting pending browser actions.
+      deadlineCleanup = (async () => { await captureEvidence(); await state?.page.close().catch(() => {}); if (!cdpEndpoint) await context?.close().catch(() => {}); })();
+    }, remainingRunMs);
+  };
+  // Human thinking time does not consume the browser workflow's time budget.
+  const operatorWait = async <T>(action: () => Promise<T>) => {
+    clearTimeout(timer);
+    remainingRunMs = Math.max(0, remainingRunMs - (Date.now() - deadlineStartedAt));
+    try { guard.check(); const response = await action(); guard.check(); return response; }
+    finally { armDeadline(); }
+  };
   const captureEvidence = () => evidenceCapture ??= (async () => {
     const screenshot = path.join(directory, 'evidence.png');
     if (state && !state.page.isClosed()) await state.page.screenshot({ path: screenshot, fullPage: true, timeout: 2000 }).then(async () => { await chmod(screenshot, 0o600); result.artifacts.screenshot = screenshot; }).catch(() => {});
@@ -88,14 +105,13 @@ export async function runWorkflow(loaded: Loaded, operation: 'apply' | 'reconcil
     state = { phase: 'preflight', page: await context.newPage(), attempted: false, screeningAudit: result.screeningAudit };
     if (cdpEndpoint) await guard.installPage(state.page);
     else { await guard.install(context); await context.tracing.start({ screenshots: true, snapshots: true, sources: true }); }
-    timer = setTimeout(() => {
-      guard.expired = true;
-      // Preserve first-failure evidence before closing the context to interrupt pending actions.
-      deadlineCleanup = (async () => { await captureEvidence(); await state?.page.close().catch(() => {}); if (!cdpEndpoint) await context?.close().catch(() => {}); })();
-    }, c.runTimeoutMs);
+    armDeadline();
     if (connection.autoQuestions && c.mode !== 'prepare')
       throw new WorkflowError('PREPARE_ONLY', 'Automatic screening is available only in prepare mode.', 2, 'blocked');
-    result.status = operation === 'apply' ? await applyFlow(loaded, state, ledger, runId, guard, step, connection) : await reconcileFlow(loaded, state, ledger, guard, step);
+    const options: ApplyOptions = { ...connection,
+      questionResponder: connection.questionResponder ? question => operatorWait(() => connection.questionResponder!(question)) : undefined,
+      confirmBeforeSubmit: connection.confirmBeforeSubmit ? () => operatorWait(connection.confirmBeforeSubmit!) : undefined };
+    result.status = operation === 'apply' ? await applyFlow(loaded, state, ledger, runId, guard, step, options) : await reconcileFlow(loaded, state, ledger, guard, step);
     guard.check();
     result.code = result.status === 'prepared' ? 'PREPARED' : result.status === 'submitted' ? 'SUBMITTED' : 'RECONCILED';
     result.exitCode = result.status === 'already_applied' ? 8 : 0;

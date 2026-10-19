@@ -6,6 +6,23 @@ import { WorkflowError, invalid } from './errors.js';
 import { validateCdpEndpoint } from './reporting.js';
 import { loadBatchAdapter, runBatchPrepare, selectSingleSubmissionCandidate } from './batch.js';
 import path from 'node:path';
+import { createInterface } from 'node:readline/promises';
+import type { InteractiveQuestion } from './pages/interactive-questions.js';
+
+async function terminalAnswer(prompt: string) {
+  if (!process.stdin.isTTY) throw new WorkflowError('INTERACTIVE_CONFIRMATION_REQUIRED', 'Search submit requires an interactive terminal for answers and final confirmation.', 3, 'blocked');
+  const terminal = createInterface({ input: process.stdin, output: process.stdout });
+  try { return await terminal.question(prompt); }
+  finally { terminal.close(); }
+}
+
+async function answerQuestion(question: InteractiveQuestion) {
+  console.log(`\n${question.prompt}`);
+  question.options?.forEach((option, index) => console.log(`  ${index + 1}. ${option}`));
+  return terminalAnswer(question.options
+    ? question.multiple ? 'Enter option numbers separated by commas (blank = none; q = cancel): ' : 'Enter one option number (q = cancel): '
+    : 'Enter your answer (q = cancel): ');
+}
 
 const cli = new Command().name('seek-test').description('Single-job SEEK production UI test runner. Prepare mode is the default.').version('0.1.0');
 for (const command of ['validate', 'auth', 'apply', 'reconcile'] as const) {
@@ -67,7 +84,7 @@ cli.command('prepare-one <jobId>')
     process.exitCode = result.exitCode;
   });
 cli.command('search-submit [search]')
-  .description('Search SEEK, show one eligible Quick Apply job, require SUBMIT 1, then prepare and submit only if review passes.')
+  .description('Search SEEK, approve one job with PREPARE 1, answer questions interactively, then confirm SUBMIT 1 at review.')
   .requiredOption('-c, --config <path>', 'Configuration JSON file')
   .requiredOption('--connect-cdp <url>', 'Attach to a manually signed-in dedicated local Chrome profile')
   .option('--query <keywords>', 'Override search keywords')
@@ -81,7 +98,11 @@ cli.command('search-submit [search]')
     loaded.adapter = adapter;
     loaded.config = { ...loaded.config, mode: 'submit', target: { jobId: candidate.jobId, expectedTitle: candidate.title, expectedEmployer: candidate.employer } };
     const result = await runWorkflow(loaded, 'apply', async (name, action) => { console.log(name); return action(); },
-      { cdpEndpoint: options.connectCdp, directJob: true });
+      { cdpEndpoint: options.connectCdp, directJob: true, questionResponder: answerQuestion,
+        confirmBeforeSubmit: async () => {
+          console.log(`\nReview verified: ${candidate.title} — ${candidate.employer} (${candidate.jobId}). Check the application in Chrome.`);
+          return (await terminalAnswer('Type SUBMIT 1 to click Submit application once, or anything else to cancel: ')).trim() === 'SUBMIT 1';
+        } });
     console.log(`${result.status} [${result.code}]: ${result.message}\nResult: ${result.artifacts.result}`);
     process.exitCode = result.exitCode;
   });
