@@ -7,8 +7,9 @@ import { validateCdpEndpoint } from './reporting.js';
 import { loadBatchAdapter, runBatchPrepare, selectSingleSubmissionCandidate } from './batch.js';
 import path from 'node:path';
 import { firstOptionTestAnswer } from './pages/interactive-questions.js';
+import { runBatchSubmit, validateBatchSubmitOptions } from './batch-submit.js';
 
-const cli = new Command().name('seek-test').description('Single-job SEEK production UI test runner. Prepare mode is the default.').version('0.1.0');
+const cli = new Command().name('seek-test').description('SEEK production UI test runner. Prepare mode is the default.').version('0.1.0');
 for (const command of ['validate', 'auth', 'apply', 'reconcile'] as const) {
   cli.command(command)
     .description({ validate: 'Validate config, adapter and documents without opening a browser or using the network.', auth: 'Interactively log in and verify the designated account.', apply: 'Search, prepare or submit one configured test application.', reconcile: 'Read application history and reconcile a previous attempt; never submit.' }[command])
@@ -46,6 +47,26 @@ cli.command('batch-prepare [search]')
     const adapter = await loadBatchAdapter(path.resolve(options.batchAdapter));
     const result = await runBatchPrepare(loaded, adapter, options.connectCdp, undefined, { submissionIntervalSeconds });
     console.log(`Batch result: ${result.artifact}`);
+  });
+cli.command('batch-submit [search]')
+  .description('Show the requested number of jobs, require SUBMIT N, then submit sequentially with first-option test answers and a wait between applications.')
+  .requiredOption('-c, --config <path>', 'Configuration JSON file')
+  .requiredOption('--connect-cdp <url>', 'Dedicated signed-in local Chrome profile')
+  .requiredOption('--count <number>', 'Number of jobs to select and attempt')
+  .requiredOption('--wait-seconds <seconds>', 'Seconds to wait after a confirmed submission before starting the next job')
+  .option('--query <keywords>', 'Override search keywords')
+  .option('--location <location>', 'Override search location')
+  .option('--batch-adapter <path>', 'Observed Quick Apply submit adapter', 'config/seek.batch.prepare.candidate.json')
+  .action(async (search, options) => {
+    const count = Number(options.count), waitSeconds = Number(options.waitSeconds);
+    validateBatchSubmitOptions(count, waitSeconds);
+    validateCdpEndpoint(options.connectCdp);
+    const loaded = await loadConfig(options.config, { query: search ?? options.query, location: options.location, mode: 'submit' });
+    const adapter = await loadBatchAdapter(path.resolve(options.batchAdapter));
+    const result = await runBatchSubmit(loaded, adapter, options.connectCdp, { count, waitSeconds });
+    console.log(`Batch ${result.status}: ${result.submitted}/${result.count} confirmed submitted. Result: ${result.artifact}`);
+    if (result.failure) console.log(`${result.failure.code}: ${result.failure.message}`);
+    process.exitCode = result.exitCode;
   });
 cli.command('prepare-one <jobId>')
   .description('Prepare one exact SEEK Quick Apply job, including supported screening pages; never submit.')

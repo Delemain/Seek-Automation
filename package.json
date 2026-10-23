@@ -10,6 +10,7 @@
     "auth": "tsx src/cli.ts auth",
     "apply": "tsx src/cli.ts apply",
     "batch:prepare": "tsx src/cli.ts batch-prepare",
+    "batch:submit": "tsx src/cli.ts batch-submit",
     "search:submit": "tsx src/cli.ts search-submit",
     "prepare:one": "tsx src/cli.ts prepare-one",
     "validate": "tsx src/cli.ts validate",

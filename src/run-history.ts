@@ -5,16 +5,19 @@ import { WorkflowError } from './errors.js';
 import type { ScreeningPageAudit } from './pages/screening-audit.js';
 
 export type RunHistoryJob = {
-  jobId: string; title: string; employer: string; seekUrl: string; status: 'ready_to_submit' | 'skipped';
+  jobId: string; title: string; employer: string; seekUrl: string; status: 'ready_to_submit' | 'skipped' | 'submitted' | 'submission_uncertain' | 'pending' | 'running';
   reason?: { code: string; message: string }; screeningAudit?: ScreeningPageAudit[];
   /** ISO time at which an operator may manually submit this prepared draft; null for skipped jobs. */
   submissionPlan?: string | null;
-  /** Batch preparation never submits; retained for an explicit operator audit trail. */
-  submitted: false;
+  /** True only when the site's submission confirmation was verified. */
+  submitted: boolean;
+  submissionAttempted?: boolean;
+  confirmation?: string;
+  resultPath?: string;
 };
 export type RunHistoryEntry = {
   runId: string; requestedAt: string; completedAt?: string;
-  request: { command: 'batch-prepare'; searchText: string; location: string; limit: number; submissionIntervalSeconds: number }
+  request: { command: 'batch-prepare' | 'batch-submit'; searchText: string; location: string; limit: number; submissionIntervalSeconds: number }
     | { command: 'prepare-one'; jobId: string; title: string; employer: string };
   /** Query/fragment-free SEEK results page after the search text was verified in its URL. */
   searchUrl?: string;

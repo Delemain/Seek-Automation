@@ -8,7 +8,7 @@ import { WorkflowError } from './errors.js';
 import { atomicJson } from './submission-ledger.js';
 import { RunHistory, type RunHistoryEntry } from './run-history.js';
 import { validateCdpEndpoint } from './reporting.js';
-import { checkAuthentication, configureContext, locate, unique, NavigationGuard } from './pages/ui.js';
+import { checkAuthentication, configureContext, locate, unique, visible, NavigationGuard } from './pages/ui.js';
 import { startApplication } from './pages/job-page.js';
 import { completeApplication } from './pages/application-page.js';
 import type { ScreeningPageAudit } from './pages/screening-audit.js';
@@ -92,7 +92,8 @@ export async function waitForChangedSearchResults(page: Page, adapter: Adapter, 
 }
 
 export type BatchDiscovery = { candidates: BatchCandidate[]; searchUrl: string; searchVerification: 'result_url' | 'search_field' };
-export async function discoverBatchCandidates(page: Page, loaded: Loaded, adapter: Adapter, guard: NavigationGuard, limit: number): Promise<BatchDiscovery> {
+export async function discoverBatchCandidates(page: Page, loaded: Loaded, adapter: Adapter, guard: NavigationGuard, limit: number,
+  options: { paginate?: boolean; eligible?: (candidate: BatchCandidate) => Promise<boolean> } = {}): Promise<BatchDiscovery> {
   const { config: c } = loaded;
   await page.goto(c.baseUrl, { waitUntil: 'domcontentloaded' });
   guard.checkPage(page);
@@ -108,21 +109,37 @@ export async function discoverBatchCandidates(page: Page, loaded: Loaded, adapte
   if (!searchVerification)
     throw new WorkflowError('SEARCH_QUERY_UNVERIFIED', 'SEEK changed job cards but neither the result URL nor the visible search field matches the submitted search text. No jobs were prepared.', 5, 'blocked');
   const candidates: BatchCandidate[] = [];
-  for (const card of await locate(page, adapter.search.card).all()) {
-    if (candidates.length === limit) break;
-    const jobId = await card.getAttribute(adapter.search.cardJobIdAttribute);
-    if (!jobId || candidates.some(candidate => candidate.jobId === jobId)) continue;
-    if (hasExplicitAppliedMarker(await card.innerText())) continue;
-    const link = await unique(card, adapter.search.cardLink);
-    const href = await link.getAttribute('href');
-    if (!href) continue;
-    const url = new URL(href, page.url());
-    if (!c.allowedOrigins.includes(url.origin) || url.pathname !== `/job/${encodeURIComponent(jobId)}`) continue;
-    const title = (await (await unique(card, adapter.search.cardTitle!)).innerText()).trim();
-    const employer = (await (await unique(card, adapter.search.cardEmployer!)).innerText()).trim();
-    if (title && employer) candidates.push({ jobId, title, employer, url: url.origin + url.pathname });
+  const seen = new Set<string>();
+  const searchUrl = safeSearchUrl(page.url());
+  for (let pageNumber = 0; pageNumber < (options.paginate ? c.maxSearchPages : 1); pageNumber++) {
+    for (const card of await locate(page, adapter.search.card).all()) {
+      if (candidates.length === limit) break;
+      if (!await card.isVisible()) continue;
+      const jobId = await card.getAttribute(adapter.search.cardJobIdAttribute);
+      if (!jobId || seen.has(jobId)) continue;
+      seen.add(jobId);
+      if (hasExplicitAppliedMarker(await card.innerText())) continue;
+      const link = await unique(card, adapter.search.cardLink);
+      const href = await link.getAttribute('href');
+      if (!href) continue;
+      const url = new URL(href, page.url());
+      if (!c.allowedOrigins.includes(url.origin) || url.pathname !== `/job/${encodeURIComponent(jobId)}`) continue;
+      const title = (await (await unique(card, adapter.search.cardTitle!)).innerText()).trim();
+      const employer = (await (await unique(card, adapter.search.cardEmployer!)).innerText()).trim();
+      if (title && employer) {
+        const candidate = { jobId, title, employer, url: url.origin + url.pathname };
+        if (!options.eligible || await options.eligible(candidate)) candidates.push(candidate);
+      }
+    }
+    if (candidates.length === limit || !options.paginate || pageNumber + 1 === c.maxSearchPages || !await visible(page, adapter.search.next)) break;
+    const next = await unique(page, adapter.search.next!);
+    if (!await next.isEnabled()) break;
+    const previousIds = await visibleResultCardIds(page, adapter);
+    await next.click();
+    await waitForChangedSearchResults(page, adapter, previousIds, () => guard.checkPage(page), c.stepTimeoutMs);
+    guard.checkPage(page);
   }
-  return { candidates, searchUrl: safeSearchUrl(page.url()), searchVerification };
+  return { candidates, searchUrl, searchVerification };
 }
 
 function jobLoaded(loaded: Loaded, adapter: Adapter, candidate: BatchCandidate): Loaded {

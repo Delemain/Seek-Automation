@@ -26,15 +26,18 @@ export const fixtureAdapter: Adapter = {
   history: { url: '/history', ready: id('history'), entry: id('history-entry'), jobIdAttribute: 'data-job-id', reference: id('history-reference') },
 };
 export type Options = { expired?: boolean; unknownQuestion?: boolean; external?: boolean; popup?: boolean; loseConfirmation?: boolean; existingResume?: boolean; unselectedResume?: boolean; profileOnly?: boolean; radioCoverCompletion?: boolean; prefilledSearchLocation?: boolean; thirdPartyFrame?: boolean;
-  missing?: boolean; ambiguous?: boolean; mismatch?: boolean; alreadyApplied?: boolean; uploadFailure?: boolean; pagination?: boolean; challenge?: boolean; inlineDetail?: boolean; wrongApplyHref?: boolean; wrongAccountOnApplication?: boolean; wrongAccountOnReview?: boolean; questionsBeforeProfile?: boolean; textHistory?: boolean };
+  missing?: boolean; ambiguous?: boolean; mismatch?: boolean; alreadyApplied?: boolean; uploadFailure?: boolean; pagination?: boolean; challenge?: boolean; inlineDetail?: boolean; wrongApplyHref?: boolean; wrongAccountOnApplication?: boolean; wrongAccountOnReview?: boolean; questionsBeforeProfile?: boolean; textHistory?: boolean;
+  batchJobs?: number; batchPageSize?: number; batchApplied?: string[]; batchBlocked?: string[] };
 function html(body: string) { return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Local workflow fixture</title></head><body>${body}</body></html>`; }
 const account = '<div data-testid="account">test@example.invalid</div>';
-const jobIdentity = `${account}<span data-testid="job-id">94974243</span><h1 data-testid="title">QA Test Engineer</h1><div data-testid="employer">Fixture Employer</div>`;
+const fixtureIdentity = `${account}<span data-testid="job-id">94974243</span><h1 data-testid="title">QA Test Engineer</h1><div data-testid="employer">Fixture Employer</div>`;
 
 export async function startFixture(options: Options = {}) {
-  const state = { submissions: 0, uploads: [] as { filename: string; body: string }[], searches: [] as { query: string; location: string }[], selectedJobs: [] as string[], screeningAnswers: [] as Record<string, string | string[]>[] };
+  const state = { submissions: 0, submittedIds: [] as string[], uploads: [] as { filename: string; body: string }[], searches: [] as { query: string; location: string }[], selectedJobs: [] as string[], screeningAnswers: [] as Record<string, string | string[]>[] };
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url!, 'http://localhost');
+    const currentJob = /^\/job\/(\d+)/.exec(url.pathname)?.[1] ?? /fixture_job=(\d+)/.exec(req.headers.cookie ?? '')?.[1] ?? '94974243';
+    const jobIdentity = fixtureIdentity.replace('94974243', currentJob);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     if (options.challenge) { res.end(html('<h1 data-testid="challenge">Human verification</h1>')); return; }
     if (options.expired || !req.headers.cookie?.includes('fixture_session=approved')) { res.end(html('<h1 data-testid="login">Sign in</h1>')); return; }
@@ -45,18 +48,27 @@ export async function startFixture(options: Options = {}) {
     }
     if (url.pathname === '/search') {
       state.searches.push({ query: url.searchParams.get('q') ?? '', location: url.searchParams.get('location') ?? '' });
+      if (options.batchJobs) {
+        const size = options.batchPageSize ?? options.batchJobs;
+        const pageNumber = Number(url.searchParams.get('page') ?? '1');
+        const cards = Array.from({ length: options.batchJobs }, (_, index) => String(94974243 + index)).slice((pageNumber - 1) * size, pageNumber * size)
+          .map(jobId => `<article data-testid="job-card" data-job-id="${jobId}"><a href="/job/${jobId}">QA Test Engineer</a><span data-testid="company">Fixture Employer</span>${options.batchApplied?.includes(jobId) ? '<p>Applied</p>' : ''}</article>`).join('');
+        const next = pageNumber * size < options.batchJobs ? `<a href="/search?q=${encodeURIComponent(url.searchParams.get('q') ?? '')}&amp;page=${pageNumber + 1}">Next page</a>` : '';
+        res.end(html(`${account}<section data-testid="results">${cards}</section>${next}`)); return;
+      }
       const target = `<article data-testid="job-card" data-job-id="94974243"><a href="/job/94974243"${options.inlineDetail ? ' onclick="event.preventDefault();document.getElementById(\'job-panel\').hidden=false"' : ''}>QA Test Engineer</a></article>`;
       const showTarget = !options.missing && (!options.pagination || url.searchParams.has('page'));
       const panel = options.inlineDetail ? `<section id="job-panel" hidden><a href="/job/${options.wrongApplyHref ? '99999999' : '94974243'}/apply" aria-label="Apply for QA Test Engineer at Fixture Employer" onclick="event.preventDefault();location.href='/apply'">Quick apply</a></section>` : '';
       res.end(html(`${account}<section data-testid="results"><article data-testid="job-card" data-job-id="99999999"><a href="/job/99999999">QA Test Engineer</a></article>${showTarget ? target + (options.ambiguous ? target : '') : ''}</section>${panel}${options.pagination && !url.searchParams.has('page') ? '<a href="/search?page=2">Next page</a>' : ''}`)); return;
     }
     if (url.pathname.startsWith('/job/')) {
+      if (options.batchJobs) res.setHeader('Set-Cookie', `fixture_job=${currentJob}; Path=/`);
       state.selectedJobs.push(url.pathname.split('/').at(-1)!);
       const dest = options.external ? 'http://127.0.0.1:9/external' : '/apply';
       const go = options.popup ? `window.open('${dest}')` : `location.href='${dest}'`;
-      const applyHref = `/job/${options.wrongApplyHref ? '99999999' : '94974243'}/apply`;
+      const applyHref = `/job/${options.wrongApplyHref ? '99999999' : currentJob}/apply`;
       const apply = `<a href="${applyHref}" aria-label="Apply for QA Test Engineer at Fixture Employer" onclick="event.preventDefault();${go}">Quick apply</a>`;
-      res.end(html(`<section data-testid="job">${options.mismatch ? jobIdentity.replace('Fixture Employer', 'Different Employer') : jobIdentity}${apply}${options.alreadyApplied ? '<p data-testid="already">Already applied</p>' : ''}<button onclick="${go}">Apply</button></section>`)); return;
+      res.end(html(`<section data-testid="job">${options.mismatch ? jobIdentity.replace('Fixture Employer', 'Different Employer') : jobIdentity}${apply}${options.alreadyApplied || options.batchBlocked?.includes(currentJob) ? '<p data-testid="already">Already applied</p>' : ''}<button onclick="${go}">Apply</button></section>`)); return;
     }
     if (url.pathname === '/apply') {
       // Cover letter intentionally comes first. No positional upload locators can pass.
@@ -123,11 +135,11 @@ export async function startFixture(options: Options = {}) {
       res.end(html(`${options.wrongAccountOnReview ? jobIdentity.replace('test@example.invalid', 'other@example.invalid') : jobIdentity}<section data-testid="review">${items}<button id="submit">Submit application</button></section><script>
         for(const el of document.querySelectorAll('[data-value]')) el.textContent=sessionStorage.getItem(el.dataset.value);
         document.getElementById('submit').onclick=async()=>{const r=await fetch('/submit',{method:'POST'});const d=await r.json();
-          ${options.loseConfirmation ? 'document.body.textContent="Waiting for confirmation";' : 'const panel=document.createElement("section");panel.dataset.testid="success";panel.innerHTML=\'<p>Your application has been sent to Fixture Employer</p><span data-testid="confirmed-job">94974243</span><span data-testid="reference"></span>\';panel.querySelector(\'[data-testid="reference"]\').textContent=d.reference;document.body.append(panel);'}
+          ${options.loseConfirmation ? 'document.body.textContent="Waiting for confirmation";' : `const panel=document.createElement("section");panel.dataset.testid="success";panel.innerHTML='<p>Your application has been sent to Fixture Employer</p><span data-testid="confirmed-job">${currentJob}</span><span data-testid="reference"></span>';panel.querySelector('[data-testid="reference"]').textContent=d.reference;document.body.append(panel);`}
         };
       </script>`)); return;
     }
-    if (url.pathname === '/submit' && req.method === 'POST') { state.submissions++; res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ reference: 'fixture-application-1' })); return; }
+    if (url.pathname === '/submit' && req.method === 'POST') { state.submissions++; state.submittedIds.push(currentJob); res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ reference: 'fixture-application-1' })); return; }
     if (url.pathname === '/history') {
       const entry = options.textHistory
         ? '<article><button>Job Title QA Test Engineer</button><p>Fixture Employer</p><p>Applied on SEEK</p></article>'

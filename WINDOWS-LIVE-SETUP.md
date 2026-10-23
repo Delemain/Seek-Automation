@@ -62,9 +62,17 @@ npm run apply -- --config config/local.json --mode prepare --connect-cdp http://
 
 Skip `Copy-Item` if you already have a customized `config/local.json`; do not overwrite it. The run searches for `AI Engineer` with no location, verifies the exact job, checks your account email on Quick Apply **before** uploading, verifies the preselected résumé, uploads the local cover letter, leaves your SEEK Profile and skills untouched, then checks review. It does not click Submit application. Uploading may save a draft. If it stops, share only the diagnostic code and phase from `result.json` after reviewing for personal data; do not share the full trace or session files.
 
-The candidate now checks the observed job-specific success page and the Activity/Applied history entry. It can run `--mode submit`, but that automated click has not been exercised against SEEK yet. The standalone `auth` command still blocks this candidate because the homepage account email could not be verified; use the dedicated Chrome CDP path above.
+The candidate checks the observed job-specific success page and the Activity/Applied history entry. A supervised single-job production run has confirmed automated submission. The standalone `auth` command still blocks this candidate because the homepage account email could not be verified; use the dedicated Chrome CDP path above.
 
 To run the one-job production submission test, use `npm run search:submit -- "YOUR SEARCH TEXT" --config config/local.json --connect-cdp http://127.0.0.1:9222 --location ""`. It prints one eligible card and the test-answer policy. Type `SUBMIT 1` to authorize the complete run, or anything else to cancel before upload. It selects the first available option in each supported dropdown, radio or checkbox/multi-select group and uses `N/A` for text, with no further answer prompts. It verifies review and submits once automatically. Unsupported controls, rejected answers or a changed Quick Apply/review flow stop before Submit. Preparing can save a draft, and the private result contains the actual screening answers.
+
+To choose a batch size and delay between applications, run:
+
+```powershell
+npm run batch:submit -- "AI" --count 5 --wait-seconds 60 --config config/local.json --connect-cdp http://127.0.0.1:9222 --location ""
+```
+
+This lists five jobs and asks for `SUBMIT 5`, then uses the same first-option test defaults and submission checks for each approved job. It waits 60 seconds after a confirmed submission before starting the next job, with no wait after the last. Change the two numbers as needed; `--wait-seconds 0` runs without a delay. Already Applied cards and local submission records are excluded. The current live adapter searches visible first-page cards; if it cannot find the requested count, it stops before uploading. Pre-submit rejections are skipped without replacements; uncertain confirmation or an account/login problem stops the batch. Results are saved in the private batch summary and per-job artifacts. The single-job command has a confirmed supervised production result; the batch command has passed local browser tests and needs its first supervised live run.
 
 ## Capture a manually submitted application
 

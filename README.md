@@ -111,7 +111,17 @@ The quoted positional value is the exact text entered into the SEEK search bar. 
 npm run search:submit -- "YOUR SEARCH TEXT" --config config/local.json --connect-cdp http://127.0.0.1:9222 --location ""
 ```
 
-This command submits a real application using the stated test defaults. Local browser fixtures cover the default answers and exactly one submission; the automated SEEK submit click still needs a supervised live run.
+This command submits a real application using the stated test defaults. A supervised production run confirmed submission on 23 October 2026 for Associate AI & Software Engineer at Country Care Management Services (95423798).
+
+### Submit a chosen number of jobs
+
+```powershell
+npm run batch:submit -- "AI" --count 5 --wait-seconds 60 --config config/local.json --connect-cdp http://127.0.0.1:9222 --location ""
+```
+
+`--count` is the number of jobs to select and attempt; `--wait-seconds` is the delay after a confirmed submission before starting the next job. Both are required whole numbers; count must be positive and the wait can be zero. The command prints the exact jobs, test-default policy and wait time before asking for `SUBMIT 5` (or your chosen count). It then uses the verified one-job submission flow sequentially, with first-option answers and `N/A` for text. There is no wait before the first job or after the final job, and browser run timeouts do not include the interval between jobs.
+
+Discovery skips cards visibly marked Applied and jobs with an existing local submission record, including uncertain attempts. It uses observed pagination when the adapter provides a Next mapping, bounded by `maxSearchPages`; the current live batch adapter has no verified Next mapping, so it uses visible results on the first page. If fewer than the requested count are found, it stops before uploading. External applications or other pre-submit rejections are recorded and skipped; it never adds unapproved replacement jobs, so fewer than the requested count may be submitted. An uncertain submission, account mismatch or lost authentication stops the batch. Each job retains its own ledger and `result.json`; the batch summary is under `artifacts/batch-submit-<run-id>/batch-result.json` and also appears in private run history. `submitted` is true only after verified confirmation; an uncertain attempt is recorded separately. Exit code 0 means all selected jobs were confirmed submitted (or the operator cancelled); 4 means insufficient candidates or a completed batch with skipped jobs; uncertainty returns 7. Local browser tests cover multiple submissions and pacing; the batch command still needs a supervised live run.
 
 In `prepare-one` and batch prepare, ordinary question pages may appear before or after the SEEK Profile step. The runner handles either order, up to eight question pages per transition. Text fields receive `N/A`; dropdowns and checkbox multi-select groups start with the first available choice. A multiple-choice radio group is left blank unless marked required; if Continue refuses to advance, the first unanswered choice is tried. Multi-selects add one more choice per failed attempt until the page advances. The runner stops at review and **never clicks Submit**. A question layout or validation it cannot handle is marked skipped in the batch result and run history, or blocked in the one-job result. These are mechanical answers, so inspect each draft before manually submitting it; in particular, `N/A` or the first choice may not be truthful or suitable for the employer's question.
 
