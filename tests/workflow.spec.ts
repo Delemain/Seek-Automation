@@ -5,6 +5,7 @@ import { startFixture, fixtureConfig, fixtureAdapter, type Options } from './fix
 import { loadConfig, type Loaded } from '../src/config.js';
 import { runWorkflow } from '../src/reporting.js';
 import { Ledger } from '../src/submission-ledger.js';
+import { firstOptionTestAnswer } from '../src/pages/interactive-questions.js';
 
 async function scenario(options: Options, action: (loaded: Loaded, server: Awaited<ReturnType<typeof startFixture>>) => Promise<void>) {
   const server = await startFixture(options);
@@ -77,7 +78,9 @@ for (const questionsBeforeProfile of [false, true]) test(`prepare-one reaches re
     expect(server.state.submissions).toBe(0);
   } finally { await server.close(); await rm(files.dir, { recursive: true, force: true }); }
 });
-for (const confirm of [false, true]) test(`interactive one-job screening ${confirm ? 'submits once after' : 'cancels at'} final review confirmation`, async () => {
+for (const mode of ['cancel', 'confirm', 'defaults'] as const) test(mode === 'defaults'
+  ? 'one-job production test uses first-option defaults and submits once without further prompts'
+  : `interactive one-job screening ${mode === 'confirm' ? 'submits once after' : 'cancels at'} final review confirmation`, async () => {
   const server = await startFixture({ existingResume: true, profileOnly: true, radioCoverCompletion: true, questionsBeforeProfile: true });
   const files = await fixtureConfig(server.origin);
   try {
@@ -101,22 +104,29 @@ for (const confirm of [false, true]) test(`interactive one-job screening ${confi
     let confirmedAtReview = false;
     const result = await runWorkflow(loaded, 'apply', (name, fn) => test.step(name, fn), {
       directJob: true,
-      questionResponder: async question => question.kind === 'text' ? 'My truthful answer' : '2',
-      confirmBeforeSubmit: async () => {
+      questionResponder: mode === 'defaults' ? firstOptionTestAnswer : async question => question.kind === 'text' ? 'My truthful answer' : '2',
+      confirmBeforeSubmit: mode === 'defaults' ? undefined : async () => {
         expect(server.state.submissions).toBe(0);
         expect(await new Ledger(loaded.config).read()).toBeUndefined();
         confirmedAtReview = true;
-        if (!confirm) await new Promise(resolve => setTimeout(resolve, 4100)); // Operator time exceeds the active run budget.
-        return confirm;
+        if (mode === 'cancel') await new Promise(resolve => setTimeout(resolve, 4100)); // Operator time exceeds the active run budget.
+        return mode === 'confirm';
       },
     });
-    expect(confirmedAtReview, result.message).toBe(true);
-    expect(result.code, result.message).toBe(confirm ? 'SUBMITTED' : 'SUBMIT_CANCELLED');
-    expect(result.phase).toBe(confirm ? 'confirmation' : 'review');
-    expect(server.state.screeningAnswers).toEqual([{ experience: 'second', licence: 'second', skills: ['second'], details: 'My truthful answer' }]);
-    expect(server.state.submissions).toBe(confirm ? 1 : 0);
-    expect((await new Ledger(loaded.config).read())?.state).toBe(confirm ? 'confirmed' : undefined);
+    expect(confirmedAtReview, result.message).toBe(mode !== 'defaults');
+    expect(result.code, result.message).toBe(mode === 'cancel' ? 'SUBMIT_CANCELLED' : 'SUBMITTED');
+    expect(result.phase).toBe(mode === 'cancel' ? 'review' : 'confirmation');
+    expect(server.state.screeningAnswers).toEqual(mode === 'defaults'
+      ? [{ experience: 'first', licence: 'first', skills: ['first'], details: 'N/A' }]
+      : [{ experience: 'second', licence: 'second', skills: ['second'], details: 'My truthful answer' }]);
+    expect(server.state.submissions).toBe(mode === 'cancel' ? 0 : 1);
+    expect((await new Ledger(loaded.config).read())?.state).toBe(mode === 'cancel' ? undefined : 'confirmed');
     expect(result.screeningAudit).toHaveLength(1);
+    if (mode === 'defaults') {
+      const second = await runWorkflow(loaded, 'apply', undefined, { directJob: true, questionResponder: firstOptionTestAnswer });
+      expect(second.code).toBe('DUPLICATE_REFUSED');
+      expect(server.state.submissions).toBe(1);
+    }
   } finally { await server.close(); await rm(files.dir, { recursive: true, force: true }); }
 });
 test('name-only search clears a prefilled location and still selects the exact job', async () => {

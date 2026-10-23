@@ -138,14 +138,15 @@ export async function confirmBatch(candidates: BatchCandidate[]): Promise<boolea
   } finally { terminal.close(); }
 }
 
-/** Approve preparing the displayed candidate; submission is confirmed later at review. */
+/** Approve the displayed candidate and its complete one-job submission test. */
 export async function confirmSingleSubmission(candidate: BatchCandidate): Promise<boolean> {
   if (!process.stdin.isTTY) throw new WorkflowError('INTERACTIVE_CONFIRMATION_REQUIRED', 'Search submit requires an interactive terminal confirmation.', 3, 'blocked');
   const terminal = createInterface({ input: process.stdin, output: process.stdout });
   try {
     console.log(`Selected one SEEK Quick Apply job: ${candidate.title} — ${candidate.employer} (${candidate.jobId})`);
-    const answer = await terminal.question('Type PREPARE 1 to open and prepare this one application: ');
-    return answer.trim() === 'PREPARE 1';
+    console.log('Test answers: first available option for each question; N/A for text. Submission follows automatically after review verification.');
+    const answer = await terminal.question('Type SUBMIT 1 to prepare and submit this one application: ');
+    return answer.trim() === 'SUBMIT 1';
   } finally { terminal.close(); }
 }
 

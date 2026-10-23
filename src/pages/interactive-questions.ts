@@ -8,6 +8,9 @@ import { beginScreeningPage, snapshotScreening, updateScreeningPage, type Screen
 export type InteractiveQuestion = { prompt: string; kind: 'select' | 'radio' | 'checkbox' | 'text'; options?: string[]; multiple?: boolean };
 export type QuestionResponder = (question: InteractiveQuestion) => Promise<string>;
 
+/** Mechanical answers for the one-job production submission test. */
+export const firstOptionTestAnswer: QuestionResponder = async question => question.kind === 'text' ? 'N/A' : '1';
+
 const cancel = (message: string) => new WorkflowError('INTERACTIVE_SCREENING_CANCELLED', message, 0, 'blocked');
 const unsupported = () => new WorkflowError('UNSUPPORTED_SCREENING_QUESTION', 'The application contains a screening control that this interactive assistant cannot safely present. No Submit click was made.', 5, 'blocked');
 
@@ -125,7 +128,7 @@ async function completeOnePage(page: Page, next: LocatorSpec, responder: Questio
   await continueControl.click();
 }
 
-/** Presents visible native question controls to the operator; it never invents an answer or clicks Submit. */
+/** Completes visible native questions using the supplied responder; never clicks Submit. */
 export async function completeInteractiveQuestions(page: Page, destination: LocatorSpec, next: LocatorSpec, check: () => void,
   responder: QuestionResponder, maxPages = 8, stepTimeoutMs = 15000, audit: ScreeningPageAudit[] = []) {
   for (let pageNumber = 0; pageNumber < maxPages; pageNumber++) {
